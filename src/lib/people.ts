@@ -56,6 +56,18 @@ export async function exportPeople(f: Filters) {
     SELECT id, ${sql(PERSON_KEYS)} FROM people ${whereClause(f)} ${ORDER} LIMIT ${EXPORT_LIMIT}`;
 }
 
+export async function deletePeopleByIds(ids: number[]) {
+  if (ids.length === 0) return 0;
+  const res = await sql`DELETE FROM people WHERE id IN ${sql(ids)}`;
+  return res.count;
+}
+
+/** Supprime toutes les fiches correspondant aux filtres (sans filtre : toute la table). */
+export async function deletePeopleMatching(f: Filters) {
+  const res = await sql`DELETE FROM people ${whereClause(f)}`;
+  return res.count;
+}
+
 /** Valeurs distinctes pour l'autocomplétion des filtres. */
 export async function distinctValues(fields: readonly PersonField[]) {
   const lists = await Promise.all(

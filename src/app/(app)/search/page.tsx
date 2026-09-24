@@ -2,6 +2,7 @@ import Link from "next/link";
 import { requireUser } from "@/lib/auth";
 import { FIELD_LABEL, FILTER_FIELDS, type Filters } from "@/lib/fields";
 import { distinctValues, EXPORT_LIMIT, parseFilters, searchPeople } from "@/lib/people";
+import PeopleTable from "./people-table";
 
 const PAGE_SIZE = 50;
 
@@ -65,52 +66,13 @@ export default async function SearchPage({
         )}
       </div>
 
-      <div className="overflow-x-auto rounded-lg border border-slate-200 bg-white shadow-sm">
-        <table className="min-w-full text-sm">
-          <thead className="bg-slate-100 text-left text-xs uppercase tracking-wide text-slate-600">
-            <tr>
-              {["Nom", "Société", "Poste", "Secteur", "Ville", "Email", "Téléphone", ""].map((h, i) => (
-                <th key={i} className="whitespace-nowrap px-3 py-2">{h}</th>
-              ))}
-            </tr>
-          </thead>
-          <tbody className="divide-y divide-slate-100">
-            {rows.map((p) => (
-              <tr key={p.id} className="hover:bg-slate-50">
-                <td className="whitespace-nowrap px-3 py-2 font-medium">
-                  {[p.first_name, p.last_name].filter(Boolean).join(" ") || "—"}
-                </td>
-                <td className="px-3 py-2">{p.company}</td>
-                <td className="px-3 py-2">{p.job_title}</td>
-                <td className="px-3 py-2">{p.sector}</td>
-                <td className="whitespace-nowrap px-3 py-2">
-                  {p.city}
-                  {p.postal_code && <span className="text-slate-400"> ({p.postal_code})</span>}
-                </td>
-                <td className="px-3 py-2">
-                  {p.email && <a href={`mailto:${p.email}`} className="text-indigo-600 hover:underline">{p.email}</a>}
-                </td>
-                <td className="whitespace-nowrap px-3 py-2">{p.phone}</td>
-                <td className="whitespace-nowrap px-3 py-2 text-right">
-                  {p.linkedin && /^https?:\/\//i.test(p.linkedin) && (
-                    <a href={p.linkedin} target="_blank" rel="noopener noreferrer" className="mr-3 text-indigo-600 hover:underline">
-                      LinkedIn
-                    </a>
-                  )}
-                  {user.role === "admin" && (
-                    <Link href={`/admin/people/${p.id}`} className="text-slate-500 hover:text-slate-900">Modifier</Link>
-                  )}
-                </td>
-              </tr>
-            ))}
-            {rows.length === 0 && (
-              <tr>
-                <td colSpan={8} className="px-3 py-10 text-center text-slate-500">Aucun résultat.</td>
-              </tr>
-            )}
-          </tbody>
-        </table>
-      </div>
+      <PeopleTable
+        rows={rows}
+        total={total}
+        isAdmin={user.role === "admin"}
+        filterQuery={toQuery(filters)}
+        hasFilters={hasFilters}
+      />
 
       {pages > 1 && (
         <nav className="flex items-center justify-center gap-2 text-sm">

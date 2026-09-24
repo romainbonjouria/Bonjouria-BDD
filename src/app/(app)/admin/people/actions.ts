@@ -1,11 +1,32 @@
 "use server";
 
+import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { requireAdmin } from "@/lib/auth";
 import { sql } from "@/lib/db";
 import { PERSON_KEYS, type PersonField } from "@/lib/fields";
+import { deletePeopleByIds, deletePeopleMatching, parseFilters } from "@/lib/people";
 
 export type PersonActionResult = { error?: string } | undefined;
+
+/**
+ * Suppression en masse : soit une liste d'ids, soit tout ce qui correspond
+ * à une recherche (query string des filtres ; vide = toute la base).
+ */
+export async function bulkDeletePeople(
+  target: { ids: number[] } | { query: string },
+): Promise<{ deleted: number } | { error: string }> {
+  await requireAdmin();
+  let deleted: number;
+  if ("ids" in target) {
+    const ids = target.ids.map(Number).filter(Number.isInteger).slice(0, 10_000);
+    deleted = await deletePeopleByIds(ids);
+  } else {
+    deleted = await deletePeopleMatching(parseFilters(new URLSearchParams(target.query)));
+  }
+  revalidatePath("/search");
+  return { deleted };
+}
 
 export async function savePerson(_prev: PersonActionResult, fd: FormData): Promise<PersonActionResult> {
   await requireAdmin();
