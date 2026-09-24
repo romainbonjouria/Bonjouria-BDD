@@ -1,6 +1,10 @@
+import { BATCH_FIELDS } from "@/lib/fields";
+import { distinctValues } from "@/lib/people";
 import ImportForm from "./import-form";
 
-export default function ImportPage() {
+export default async function ImportPage() {
+  const suggestions = await distinctValues(BATCH_FIELDS);
+
   return (
     <div className="space-y-5">
       <div>
@@ -10,7 +14,7 @@ export default function ImportPage() {
           Si l’email existe déjà, la fiche est <strong>mise à jour</strong> (les cellules vides n’effacent rien) ; sinon elle est créée.
         </p>
       </div>
-      <ImportForm />
+      <ImportForm suggestions={suggestions} />
     </div>
   );
 }

@@ -2,7 +2,7 @@
 
 import Papa from "papaparse";
 import { useState } from "react";
-import { matchHeader, PERSON_FIELDS, type PersonField } from "@/lib/fields";
+import { BATCH_FIELDS, FIELD_LABEL, matchHeader, PERSON_FIELDS, type BatchField, type PersonField } from "@/lib/fields";
 
 const CHUNK_SIZE = 500;
 
@@ -19,8 +19,9 @@ async function readText(file: File) {
   }
 }
 
-export default function ImportForm() {
+export default function ImportForm({ suggestions }: { suggestions: Record<BatchField, string[]> }) {
   const [parsed, setParsed] = useState<Parsed | null>(null);
+  const [batch, setBatch] = useState<Record<BatchField, string>>({ sector: "", city: "" });
   const [mapping, setMapping] = useState<Record<string, PersonField | "">>({});
   const [parseError, setParseError] = useState<string | null>(null);
   const [progress, setProgress] = useState<{ done: number; total: number } | null>(null);
@@ -55,7 +56,7 @@ export default function ImportForm() {
   }
 
   const mappedFields = new Set(Object.values(mapping).filter(Boolean));
-  const canImport = parsed && mappedFields.size > 0 && !progress;
+  const canImport = parsed && (mappedFields.size > 0 || BATCH_FIELDS.some((k) => batch[k].trim())) && !progress;
 
   async function runImport() {
     if (!parsed) return;
@@ -64,6 +65,9 @@ export default function ImportForm() {
       for (const h of parsed.headers) {
         const f = mapping[h];
         if (f) out[f] = r[h];
+      }
+      for (const k of BATCH_FIELDS) {
+        if (batch[k].trim() && !out[k]?.trim()) out[k] = batch[k].trim();
       }
       return out;
     });
@@ -106,6 +110,33 @@ export default function ImportForm() {
           className="block text-sm file:mr-3 file:rounded-md file:border-0 file:bg-indigo-50 file:px-3 file:py-2 file:text-indigo-700 hover:file:bg-indigo-100"
         />
         {parseError && <p className="alert-error mt-3">{parseError}</p>}
+
+        <div className="mt-5 border-t border-slate-100 pt-4">
+          <p className="mb-3 text-sm text-slate-600">
+            Valeurs appliquées à <strong>toutes les lignes</strong> de ce fichier (facultatif). Une valeur déjà présente
+            dans une colonne du CSV reste prioritaire.
+          </p>
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+            {BATCH_FIELDS.map((k) => (
+              <div key={k}>
+                <label className="label" htmlFor={`batch-${k}`}>{FIELD_LABEL[k]}</label>
+                <input
+                  id={`batch-${k}`}
+                  className="input"
+                  list={`batch-list-${k}`}
+                  autoComplete="off"
+                  placeholder="Laisser vide si non concerné"
+                  value={batch[k]}
+                  onChange={(e) => setBatch({ ...batch, [k]: e.target.value })}
+                  disabled={!!progress}
+                />
+                <datalist id={`batch-list-${k}`}>
+                  {suggestions[k].map((v) => <option key={v} value={v} />)}
+                </datalist>
+              </div>
+            ))}
+          </div>
+        </div>
       </div>
 
       {parsed && (
