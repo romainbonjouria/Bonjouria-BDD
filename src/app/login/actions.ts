@@ -14,8 +14,14 @@ export async function login(_prev: { error?: string } | undefined, formData: For
   const password = String(formData.get("password") ?? "");
   if (!username || !password) return { error: "Identifiant et mot de passe requis." };
 
-  const [user] = await sql<{ id: number; username: string; role: Role; password_hash: string; active: boolean }[]>`
-    SELECT id, username, role, password_hash, active FROM app_users WHERE username = ${username}`;
+  let user: { id: number; username: string; role: Role; password_hash: string; active: boolean } | undefined;
+  try {
+    [user] = await sql<NonNullable<typeof user>[]>`
+      SELECT id, username, role, password_hash, active FROM app_users WHERE username = ${username}`;
+  } catch (err) {
+    console.error("Login: base de données injoignable", err);
+    return { error: "Base de données injoignable. Vérifiez la configuration (voir /api/health)." };
+  }
 
   const ok = await bcrypt.compare(password, user?.password_hash ?? DUMMY_HASH);
   if (!user || !ok) return { error: "Identifiant ou mot de passe incorrect." };

@@ -5,7 +5,7 @@ import { SESSION_COOKIE, verifySession } from "@/lib/session";
 // Les pages et routes revérifient ensuite le compte en BDD (actif, rôle).
 export async function proxy(req: NextRequest) {
   const { pathname } = req.nextUrl;
-  if (pathname === "/login") return NextResponse.next();
+  if (pathname === "/login" || pathname === "/api/health") return NextResponse.next();
 
   const session = await verifySession(req.cookies.get(SESSION_COOKIE)?.value);
   if (!session) {
