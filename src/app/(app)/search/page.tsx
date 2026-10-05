@@ -1,7 +1,8 @@
 import Link from "next/link";
 import { requireUser } from "@/lib/auth";
 import { FIELD_LABEL, FILTER_FIELDS, type Filters } from "@/lib/fields";
-import { distinctValues, EXPORT_LIMIT, parseFilters, searchPeople } from "@/lib/people";
+import { EXPORT_LIMIT, facetValues, parseFilters, searchPeople } from "@/lib/people";
+import FilterSelect from "./filter-select";
 import PeopleTable from "./people-table";
 
 const PAGE_SIZE = 50;
@@ -23,10 +24,9 @@ export default async function SearchPage({
   const filters = parseFilters(params);
   const page = Math.max(1, Number(params.page) || 1);
 
-  const [{ total, rows }, suggestions] = await Promise.all([
-    searchPeople(filters, page, PAGE_SIZE),
-    distinctValues(["city", "sector", "company", "job_title", "country"]),
-  ]);
+  const [{ total, rows }, facets] = await Promise.all([searchPeople(filters, page, PAGE_SIZE), facetValues(filters)]);
+  // On masque les filtres sans aucune valeur en base (ex. colonnes absentes des CSV importés)
+  const visibleFilters = FILTER_FIELDS.filter((k) => facets[k].length > 0 || filters[k]);
   const pages = Math.max(1, Math.ceil(total / PAGE_SIZE));
   const hasFilters = Object.keys(filters).length > 0;
 
@@ -37,18 +37,10 @@ export default async function SearchPage({
           <label className="label" htmlFor="q">Recherche libre (nom, prénom, email, société)</label>
           <input id="q" name="q" defaultValue={filters.q} className="input" placeholder="ex. Dupont" />
         </div>
-        {FILTER_FIELDS.map((k) => (
-          <div key={k}>
-            <label className="label" htmlFor={k}>{FIELD_LABEL[k]}</label>
-            <input id={k} name={k} defaultValue={filters[k]} className="input" list={`list-${k}`} autoComplete="off" />
-            {k in suggestions && (
-              <datalist id={`list-${k}`}>
-                {suggestions[k].map((v) => <option key={v} value={v} />)}
-              </datalist>
-            )}
-          </div>
+        {visibleFilters.map((k) => (
+          <FilterSelect key={k} name={k} label={FIELD_LABEL[k]} value={filters[k]} options={facets[k]} />
         ))}
-        <div className="flex items-end gap-2 sm:col-span-2 lg:col-span-2 lg:justify-end">
+        <div className="flex items-end gap-2 sm:col-span-2 lg:col-span-4 lg:justify-end">
           <Link href="/search" className="btn-secondary">Réinitialiser</Link>
           <button className="btn-primary">Rechercher</button>
         </div>

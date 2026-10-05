@@ -1,6 +1,6 @@
 import "server-only";
 import { sql } from "./db";
-import { FILTER_FIELDS, PERSON_KEYS, type Filters, type Person, type PersonField } from "./fields";
+import { FILTER_FIELDS, PERSON_KEYS, type FilterField, type Filters, type Person, type PersonField } from "./fields";
 
 type SearchParams = Record<string, string | string[] | undefined> | URLSearchParams;
 
@@ -8,7 +8,7 @@ export function parseFilters(params: SearchParams): Filters {
   const get = (k: string) => {
     const v = params instanceof URLSearchParams ? params.get(k) : params[k];
     const s = (Array.isArray(v) ? v[0] : v)?.trim();
-    return s ? s.slice(0, 200) : undefined;
+    return s ? s.slice(0, 500) : undefined;
   };
   const filters: Filters = {};
   for (const k of ["q", ...FILTER_FIELDS] as const) {
@@ -23,18 +23,48 @@ function contains(v: string) {
   return "%" + v.replace(/[\\%_]/g, (m) => "\\" + m) + "%";
 }
 
-function whereClause(f: Filters) {
+/** Conditions SQL des filtres ; `except` permet d'ignorer un champ (calcul des facettes). */
+function conditions(f: Filters, except?: FilterField) {
   const conds = [];
   if (f.q) {
     const p = contains(f.q);
     conds.push(sql`unaccent(concat_ws(' ', first_name, last_name, email, company, last_name, first_name)) ILIKE unaccent(${p})`);
   }
+  // Les filtres viennent de menus déroulants alimentés par la base : correspondance exacte
   for (const k of FILTER_FIELDS) {
     const v = f[k];
-    if (v) conds.push(sql`unaccent(${sql(k)}) ILIKE unaccent(${contains(v)})`);
+    if (v && k !== except) conds.push(sql`${sql(k)} = ${v}`);
   }
+  return conds;
+}
+
+function whereOf(conds: ReturnType<typeof conditions>) {
   if (conds.length === 0) return sql``;
   return sql`WHERE ${conds.reduce((acc, c) => sql`${acc} AND ${c}`)}`;
+}
+
+function whereClause(f: Filters) {
+  return whereOf(conditions(f));
+}
+
+export type Facets = Record<FilterField, { value: string; count: number }[]>;
+const FACET_LIMIT = 2000;
+
+/**
+ * Valeurs disponibles pour chaque menu déroulant, avec leur nombre de fiches,
+ * en tenant compte des autres filtres actifs (mais pas de celui du menu lui-même).
+ */
+export async function facetValues(f: Filters): Promise<Facets> {
+  const lists = await Promise.all(
+    FILTER_FIELDS.map((k) => {
+      const conds = [...conditions(f, k), sql`${sql(k)} IS NOT NULL`, sql`${sql(k)} <> ''`];
+      return sql<{ value: string; count: number }[]>`
+        SELECT ${sql(k)} AS value, count(*)::int AS count FROM people ${whereOf(conds)}
+        GROUP BY 1 ORDER BY 1 LIMIT ${FACET_LIMIT}`;
+    }),
+  );
+  // Copie en tableaux simples (sérialisables vers les composants client)
+  return Object.fromEntries(FILTER_FIELDS.map((k, i) => [k, lists[i].map((r) => ({ value: r.value, count: r.count }))])) as Facets;
 }
 
 const ORDER = sql`ORDER BY last_name NULLS LAST, first_name NULLS LAST, id`;
