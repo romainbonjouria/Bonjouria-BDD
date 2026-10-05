@@ -6,7 +6,8 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "db:init": "node scripts/db-init.mjs"
+    "db:init": "node scripts/db-init.mjs",
+    "user:reset": "node scripts/reset-password.mjs"
   },
   "keywords": [],
   "author": "",

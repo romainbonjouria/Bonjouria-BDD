@@ -36,7 +36,15 @@ Stack : Next.js 16 · PostgreSQL (Supabase) · hébergement Vercel.
 
 Chaque `git push` sur la branche `main` redéploie automatiquement.
 
-> ⚠ Le plan gratuit Supabase met le projet en pause après 7 jours sans activité ; il se réactive depuis le tableau de bord Supabase.
+> ⚠ Le plan gratuit Supabase met le projet en pause après 7 jours sans activité (erreur `tenant/user ... not found`).
+> Une tâche planifiée Vercel (`vercel.json`) interroge `/api/health` chaque jour pour l'éviter.
+> Si le projet est malgré tout en pause, cliquez sur **Restore project** dans le tableau de bord Supabase.
+
+### Mot de passe perdu
+
+```bash
+npm run user:reset -- <identifiant> <nouveau-mot-de-passe> [--admin]
+```
 
 ---
 
