@@ -1,5 +1,6 @@
 import "server-only";
 import Anthropic from "@anthropic-ai/sdk";
+import OpenAI from "openai";
 import { sql } from "./db";
 import { SECTORS, sectorFromNaf, type Sector } from "./sectors";
 
@@ -8,7 +9,8 @@ import { SECTORS, sectorFromNaf, type Sector } from "./sectors";
  *  1. cache en base (une société n'est classée qu'une fois) ;
  *  2. registre officiel (API Recherche d'entreprises) si le nom correspond exactement
  *     et que le code NAF est assez précis ;
- *  3. sinon Claude, avec les candidats du registre comme indices (si ANTHROPIC_API_KEY est défini).
+ *  3. sinon une IA (Claude si ANTHROPIC_API_KEY, sinon OpenAI si OPENAI_API_KEY),
+ *     avec les candidats du registre comme indices.
  */
 
 export type SectorSource = "cache" | "registre" | "ia";
@@ -142,12 +144,16 @@ const OUTPUT_SCHEMA = {
   additionalProperties: false,
 };
 
-let client: Anthropic | null = null;
+type AiItem = { input: CompanyInput; candidates: Candidate[] };
 
-async function classifyWithClaude(items: { input: CompanyInput; candidates: Candidate[] }[]) {
-  if (!process.env.ANTHROPIC_API_KEY || items.length === 0) return items.map(() => null);
-  client ??= new Anthropic({ timeout: 45_000, maxRetries: 1 });
+/** Fournisseur d'IA configuré : Claude en priorité, sinon OpenAI. */
+export function aiProvider(): "anthropic" | "openai" | null {
+  if (process.env.ANTHROPIC_API_KEY) return "anthropic";
+  if (process.env.OPENAI_API_KEY) return "openai";
+  return null;
+}
 
+function userPrompt(items: AiItem[]) {
   const lines = items.map(({ input, candidates }, id) =>
     JSON.stringify({
       id,
@@ -159,11 +165,26 @@ async function classifyWithClaude(items: { input: CompanyInput; candidates: Cand
         .map((c) => `${c.name} [NAF ${c.naf ?? "?"}${c.staff < 0 ? ", sans salarié" : ""}]`),
     }),
   );
+  return `Entreprises à classer (une par ligne, JSON) :\n${lines.join("\n")}`;
+}
 
+function parseResults(text: string, items: AiItem[]) {
+  const parsed = JSON.parse(text) as { results: { id: number; sector: string }[] };
+  const byId = new Map(parsed.results.map((r) => [r.id, r.sector]));
+  return items.map((_, id) => {
+    const s = byId.get(id);
+    return s && (SECTORS as readonly string[]).includes(s) ? (s as Sector) : null;
+  });
+}
+
+let anthropic: Anthropic | null = null;
+
+async function classifyWithClaude(items: AiItem[]) {
+  anthropic ??= new Anthropic({ timeout: 45_000, maxRetries: 1 });
   const model = process.env.ANTHROPIC_MODEL || "claude-opus-5";
   // effort et fallbacks ne sont pas acceptés par les petits modèles (ex. claude-haiku-4-5)
   const opusClass = /^claude-(opus-5|fable-5)/.test(model);
-  const response = await client.beta.messages.create({
+  const response = await anthropic.beta.messages.create({
     model,
     max_tokens: 8000,
     ...(opusClass ? { betas: ["server-side-fallback-2026-07-01"], fallbacks: "default" as const } : {}),
@@ -172,7 +193,7 @@ async function classifyWithClaude(items: { input: CompanyInput; candidates: Cand
       format: { type: "json_schema", schema: OUTPUT_SCHEMA },
     },
     system: SYSTEM_PROMPT,
-    messages: [{ role: "user", content: `Entreprises à classer (une par ligne, JSON) :\n${lines.join("\n")}` }],
+    messages: [{ role: "user", content: userPrompt(items) }],
   });
 
   if (response.stop_reason !== "end_turn") {
@@ -180,12 +201,41 @@ async function classifyWithClaude(items: { input: CompanyInput; candidates: Cand
     return items.map(() => null);
   }
   const text = response.content.flatMap((b) => (b.type === "text" ? [b.text] : [])).join("");
-  const parsed = JSON.parse(text) as { results: { id: number; sector: string }[] };
-  const byId = new Map(parsed.results.map((r) => [r.id, r.sector]));
-  return items.map((_, id) => {
-    const s = byId.get(id);
-    return s && (SECTORS as readonly string[]).includes(s) ? (s as Sector) : null;
+  return parseResults(text, items);
+}
+
+let openai: OpenAI | null = null;
+
+async function classifyWithOpenAI(items: AiItem[]) {
+  openai ??= new OpenAI({ timeout: 45_000, maxRetries: 1 });
+  const model = process.env.OPENAI_MODEL || "gpt-5.4-mini";
+  const completion = await openai.chat.completions.create({
+    model,
+    max_completion_tokens: 8000,
+    // Les modèles de raisonnement (gpt-5…, o…) acceptent un effort réduit pour une tâche simple
+    ...(/^(gpt-5|o\d)/.test(model) ? { reasoning_effort: "low" as const } : {}),
+    response_format: {
+      type: "json_schema",
+      json_schema: { name: "secteurs", strict: true, schema: OUTPUT_SCHEMA },
+    },
+    messages: [
+      { role: "system", content: SYSTEM_PROMPT },
+      { role: "user", content: userPrompt(items) },
+    ],
   });
+
+  const choice = completion.choices[0];
+  if (!choice || choice.finish_reason !== "stop" || choice.message.refusal || !choice.message.content) {
+    console.warn("Classification IA interrompue :", choice?.finish_reason, choice?.message.refusal);
+    return items.map(() => null);
+  }
+  return parseResults(choice.message.content, items);
+}
+
+async function classifyWithAI(items: AiItem[]) {
+  const provider = aiProvider();
+  if (!provider || items.length === 0) return items.map(() => null);
+  return provider === "anthropic" ? classifyWithClaude(items) : classifyWithOpenAI(items);
 }
 
 // ---------- Orchestration ----------
@@ -225,12 +275,12 @@ export async function detectSectors(inputs: CompanyInput[]) {
     }
   });
 
-  const aiEnabled = !!process.env.ANTHROPIC_API_KEY;
+  const aiEnabled = aiProvider() !== null;
   for (let i = 0; i < forAi.length; i += AI_BATCH) {
     const batch = forAi.slice(i, i + AI_BATCH);
     let sectors: (Sector | null)[];
     try {
-      sectors = await classifyWithClaude(batch);
+      sectors = await classifyWithAI(batch);
     } catch (err) {
       // En cas d'erreur IA on n'écrit rien en cache : la société sera retentée au prochain import
       console.error("Classification IA en échec", err);
