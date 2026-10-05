@@ -1,17 +1,17 @@
 // Définition des champs d'une personne, partagée entre client et serveur.
 
 export const PERSON_FIELDS = [
-  { key: "first_name", label: "Prénom", aliases: ["prenom", "firstname", "first name", "given name"] },
-  { key: "last_name", label: "Nom", aliases: ["nom", "lastname", "last name", "nom de famille", "surname", "family name"] },
-  { key: "email", label: "Email", aliases: ["email", "e mail", "mail", "courriel", "adresse email", "adresse mail", "adresse e mail"] },
-  { key: "phone", label: "Téléphone", aliases: ["telephone", "tel", "phone", "mobile", "portable", "numero", "numero de telephone", "n de telephone", "n telephone", "numero tel", "num tel", "numero de tel", "n de tel", "tel portable", "telephone portable", "telephone mobile", "gsm"] },
-  { key: "company", label: "Société", aliases: ["societe", "entreprise", "company", "organisation", "organization", "raison sociale", "nom de societe", "nom societe", "nom de la societe", "nom entreprise", "employeur"] },
-  { key: "job_title", label: "Poste", aliases: ["poste", "fonction", "titre", "job title", "title", "position", "intitule de poste"] },
-  { key: "sector", label: "Secteur d'activité", aliases: ["secteur", "secteur d activite", "secteur activite", "activite", "industry", "industrie", "domaine", "domaine d activite"] },
-  { key: "city", label: "Ville", aliases: ["ville", "city", "commune", "localite"] },
-  { key: "postal_code", label: "Code postal", aliases: ["code postal", "cp", "postal code", "zip", "zip code", "codepostal"] },
-  { key: "country", label: "Pays", aliases: ["pays", "country"] },
-  { key: "linkedin", label: "LinkedIn", aliases: ["linkedin", "profil linkedin", "linkedin url", "url linkedin"] },
+  { key: "first_name", label: "Prénom", aliases: ["prenom", "firstname", "first name", "given name", "first", "prenom du contact"] },
+  { key: "last_name", label: "Nom", aliases: ["nom", "lastname", "last name", "nom de famille", "surname", "family name", "last", "nom du contact"] },
+  { key: "email", label: "Email", aliases: ["email", "e mail", "mail", "courriel", "adresse email", "adresse mail", "adresse e mail", "work email", "business email", "professional email", "email address", "e mail address", "email professionnel", "mail professionnel", "email pro", "personal email", "primary email", "contact email"] },
+  { key: "phone", label: "Téléphone", aliases: ["telephone", "tel", "phone", "mobile", "portable", "numero", "numero de telephone", "n de telephone", "n telephone", "numero tel", "num tel", "numero de tel", "n de tel", "tel portable", "telephone portable", "telephone mobile", "gsm", "phone number", "mobile phone", "work phone", "direct phone", "cell phone", "telephone professionnel", "tel pro"] },
+  { key: "company", label: "Société", aliases: ["societe", "entreprise", "company", "organisation", "organization", "raison sociale", "nom de societe", "nom societe", "nom de la societe", "nom entreprise", "employeur", "company name", "organization name", "organisation name", "account name", "current company", "employer"] },
+  { key: "job_title", label: "Poste", aliases: ["poste", "fonction", "titre", "job title", "title", "position", "intitule de poste", "job", "current title", "headline", "role"] },
+  { key: "sector", label: "Secteur d'activité", aliases: ["secteur", "secteur d activite", "secteur activite", "activite", "industry", "industrie", "domaine", "domaine d activite", "sector", "company industry"] },
+  { key: "city", label: "Ville", aliases: ["ville", "city", "commune", "localite", "town", "location city", "company city"] },
+  { key: "postal_code", label: "Code postal", aliases: ["code postal", "cp", "postal code", "zip", "zip code", "codepostal", "postcode", "post code", "postal"] },
+  { key: "country", label: "Pays", aliases: ["pays", "country", "company country", "location country"] },
+  { key: "linkedin", label: "LinkedIn", aliases: ["linkedin", "profil linkedin", "linkedin url", "url linkedin", "linkedin profile", "linkedin profile url", "person linkedin url", "profile url", "linkedin link", "lien linkedin"] },
   { key: "notes", label: "Notes", aliases: ["notes", "note", "commentaire", "commentaires", "remarques"] },
 ] as const;
 
