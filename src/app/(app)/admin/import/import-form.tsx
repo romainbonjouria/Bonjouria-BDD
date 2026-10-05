@@ -3,11 +3,15 @@
 import Papa from "papaparse";
 import { useState } from "react";
 import { BATCH_FIELDS, FIELD_LABEL, matchHeader, PERSON_FIELDS, type BatchField, type PersonField } from "@/lib/fields";
+import { SECTORS } from "@/lib/sectors";
 
 const CHUNK_SIZE = 500;
+// Lots plus petits quand la détection de secteur est active (appels au registre + IA)
+const CHUNK_SIZE_DETECT = 100;
 
 type Parsed = { fileName: string; headers: string[]; rows: Record<string, string>[] };
-type Report = { created: number; updated: number; skipped: number; errors: string[] };
+type Detected = { registre: number; ia: number; cache: number; introuvable: number };
+type Report = { created: number; updated: number; skipped: number; errors: string[]; detected: Detected | null };
 
 /** Excel (Windows) enregistre souvent en Windows-1252 : on essaie UTF-8 puis on bascule. */
 async function readText(file: File) {
@@ -26,6 +30,8 @@ export default function ImportForm({ suggestions }: { suggestions: Record<BatchF
   const [parseError, setParseError] = useState<string | null>(null);
   const [progress, setProgress] = useState<{ done: number; total: number } | null>(null);
   const [report, setReport] = useState<Report | null>(null);
+  const [detectSector, setDetectSector] = useState(true);
+  const sectorSuggestions = [...new Set([...SECTORS, ...suggestions.sector])].sort((a, b) => a.localeCompare(b, "fr"));
 
   async function onFile(file: File | undefined) {
     setParsed(null);
@@ -72,27 +78,35 @@ export default function ImportForm({ suggestions }: { suggestions: Record<BatchF
       return out;
     });
 
-    const total: Report = { created: 0, updated: 0, skipped: 0, errors: [] };
+    const detect = detectSector && !batch.sector.trim() && mappedFields.has("company");
+    const chunkSize = detect ? CHUNK_SIZE_DETECT : CHUNK_SIZE;
+    const total: Report = {
+      created: 0, updated: 0, skipped: 0, errors: [],
+      detected: detect ? { registre: 0, ia: 0, cache: 0, introuvable: 0 } : null,
+    };
     setReport(null);
     setProgress({ done: 0, total: rows.length });
 
-    for (let i = 0; i < rows.length; i += CHUNK_SIZE) {
-      const chunk = rows.slice(i, i + CHUNK_SIZE);
+    for (let i = 0; i < rows.length; i += chunkSize) {
+      const chunk = rows.slice(i, i + chunkSize);
       try {
         const res = await fetch("/api/import", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ rows: chunk }),
+          body: JSON.stringify({ rows: chunk, detectSector: detect }),
         });
         const data = await res.json();
         if (!res.ok) throw new Error(data.error ?? `Erreur ${res.status}`);
         total.created += data.created;
         total.updated += data.updated;
         total.skipped += data.skipped;
+        if (total.detected && data.detected) {
+          for (const k of Object.keys(total.detected) as (keyof Detected)[]) total.detected[k] += data.detected[k] ?? 0;
+        }
       } catch (e) {
         total.errors.push(`Lignes ${i + 2} à ${i + 1 + chunk.length} : ${(e as Error).message}`);
       }
-      setProgress({ done: Math.min(i + CHUNK_SIZE, rows.length), total: rows.length });
+      setProgress({ done: Math.min(i + chunkSize, rows.length), total: rows.length });
     }
     setProgress(null);
     setReport(total);
@@ -131,11 +145,30 @@ export default function ImportForm({ suggestions }: { suggestions: Record<BatchF
                   disabled={!!progress}
                 />
                 <datalist id={`batch-list-${k}`}>
-                  {suggestions[k].map((v) => <option key={v} value={v} />)}
+                  {(k === "sector" ? sectorSuggestions : suggestions[k]).map((v) => <option key={v} value={v} />)}
                 </datalist>
               </div>
             ))}
           </div>
+
+          <label className="mt-4 flex items-start gap-2 text-sm">
+            <input
+              type="checkbox"
+              className="mt-0.5"
+              checked={detectSector}
+              onChange={(e) => setDetectSector(e.target.checked)}
+              disabled={!!progress || !!batch.sector.trim()}
+            />
+            <span>
+              <strong>Détecter automatiquement le secteur</strong> à partir du nom de la société (registre officiel des
+              entreprises, puis IA si besoin), pour les lignes sans secteur.
+              <span className="block text-xs text-slate-500">
+                {batch.sector.trim()
+                  ? "Désactivé : le secteur saisi ci-dessus s’applique à tout le fichier."
+                  : "Nécessite une colonne Société. L’import est plus long (quelques secondes par centaine de lignes)."}
+              </span>
+            </span>
+          </label>
         </div>
       </div>
 
@@ -199,6 +232,13 @@ export default function ImportForm({ suggestions }: { suggestions: Record<BatchF
             Import terminé : <strong>{report.created}</strong> créée(s), <strong>{report.updated}</strong> mise(s) à jour,{" "}
             <strong>{report.skipped}</strong> ignorée(s) (ni nom, ni prénom, ni email, ni société).
           </p>
+          {report.detected && (
+            <p>
+              Secteurs détectés : <strong>{report.detected.registre + report.detected.ia + report.detected.cache}</strong>{" "}
+              (registre : {report.detected.registre}, IA : {report.detected.ia}, déjà connus : {report.detected.cache}) —{" "}
+              <strong>{report.detected.introuvable}</strong> ligne(s) sans secteur trouvé.
+            </p>
+          )}
           {report.errors.map((e) => <p key={e}>{e}</p>)}
         </div>
       )}

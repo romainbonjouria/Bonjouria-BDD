@@ -28,6 +28,15 @@ CREATE TABLE IF NOT EXISTS people (
   updated_at  TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
+-- Cache de la détection automatique du secteur (une ligne par société)
+CREATE TABLE IF NOT EXISTS company_sectors (
+  company_key TEXT PRIMARY KEY,   -- nom de société normalisé
+  sector      TEXT,               -- NULL = introuvable
+  source      TEXT NOT NULL,      -- registre | ia
+  naf         TEXT,
+  checked_at  TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
 -- Recherche insensible aux accents ("Evry" trouve "Évry")
 CREATE EXTENSION IF NOT EXISTS unaccent;
 
@@ -35,3 +44,4 @@ CREATE EXTENSION IF NOT EXISTS unaccent;
 -- on active RLS sans politique pour bloquer l'API publique de Supabase.
 ALTER TABLE app_users ENABLE ROW LEVEL SECURITY;
 ALTER TABLE people    ENABLE ROW LEVEL SECURITY;
+ALTER TABLE company_sectors ENABLE ROW LEVEL SECURITY;
