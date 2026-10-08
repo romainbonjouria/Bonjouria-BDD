@@ -4,6 +4,7 @@ import bcrypt from "bcryptjs";
 import { revalidatePath } from "next/cache";
 import { requireAdmin } from "@/lib/auth";
 import { sql } from "@/lib/db";
+import { ensureSchema } from "@/lib/schema";
 
 export type ActionResult = { ok?: string; error?: string } | undefined;
 
@@ -56,6 +57,17 @@ export async function resetPassword(_prev: ActionResult, fd: FormData): Promise<
   const hash = await bcrypt.hash(password, 10);
   await sql`UPDATE app_users SET password_hash = ${hash} WHERE id = ${id}`;
   return done("Mot de passe réinitialisé.");
+}
+
+export async function setEmailAccess(_prev: ActionResult, fd: FormData): Promise<ActionResult> {
+  await requireAdmin();
+  const id = Number(fd.get("id"));
+  if (!Number.isInteger(id)) return { error: "Utilisateur invalide." };
+  const hide = fd.get("hide_emails") === "on";
+  await ensureSchema();
+  await sql`UPDATE app_users SET hide_emails = ${hide} WHERE id = ${id}`;
+  revalidatePath(`/admin/users/${id}`);
+  return { ok: hide ? "Emails masqués pour cet utilisateur." : "Emails visibles pour cet utilisateur." };
 }
 
 export async function deleteUser(_prev: ActionResult, fd: FormData): Promise<ActionResult> {

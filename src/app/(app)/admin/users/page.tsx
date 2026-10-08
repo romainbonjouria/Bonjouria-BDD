@@ -19,7 +19,8 @@ export default async function UsersPage() {
 
   return (
     <div className="space-y-5">
-      <h1 className="text-xl font-semibold">Utilisateurs</h1>
+      <h1 className="text-xl">Utilisateurs</h1>
+      <p className="-mt-3 text-sm text-slate-500">Cliquez sur un identifiant pour voir sa dernière connexion, ses téléchargements et gérer l’accès aux emails.</p>
       <CreateUserForm />
       <div className="overflow-x-auto rounded-2xl bg-white shadow-soft">
         <table className="min-w-full text-sm">

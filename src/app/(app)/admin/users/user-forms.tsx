@@ -1,6 +1,7 @@
 "use client";
 
 import { useActionState, useEffect, useRef } from "react";
+import Link from "next/link";
 import type { Role } from "@/lib/session";
 import { createUser, deleteUser, resetPassword, updateUser, type ActionResult } from "./actions";
 
@@ -62,7 +63,7 @@ export function UserRow({ user, isMe }: Props) {
   return (
     <tr className={`align-top ${user.active ? "" : "bg-slate-50 text-slate-400"}`}>
       <td className="px-3 py-2 font-medium">
-        {user.username}
+        <Link href={`/admin/users/${user.id}`} className="text-brand hover:underline">{user.username}</Link>
         {isMe && <span className="ml-1 text-xs text-slate-400">(vous)</span>}
       </td>
       <td className="px-3 py-2">

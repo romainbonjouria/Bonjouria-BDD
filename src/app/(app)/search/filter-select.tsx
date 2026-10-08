@@ -29,7 +29,7 @@ export default function FilterSelect({ name, label, value, options }: Props) {
         <option value="">Tous</option>
         {list.map((o) => (
           <option key={o.value} value={o.value}>
-            {o.value} ({o.count.toLocaleString("fr-FR")})
+            {o.value.startsWith("~") ? `contient « ${o.value.slice(1)} »` : `${o.value} (${o.count.toLocaleString("fr-FR")})`}
           </option>
         ))}
       </select>

@@ -1,5 +1,6 @@
 import { getCurrentUser } from "@/lib/auth";
 import { PERSON_FIELDS } from "@/lib/fields";
+import { sql } from "@/lib/db";
 import { exportPeople, parseFilters } from "@/lib/people";
 
 export const dynamic = "force-dynamic";
@@ -16,7 +17,11 @@ export async function GET(req: Request) {
   if (!user) return Response.json({ error: "Non authentifié" }, { status: 401 });
 
   const filters = parseFilters(new URL(req.url).searchParams);
-  const rows = await exportPeople(filters);
+  const rows = await exportPeople(filters, user.hide_emails);
+  // Historique des téléchargements (consultable par les admins sur la fiche utilisateur)
+  await sql`
+    INSERT INTO export_log (user_id, row_count, filters)
+    VALUES (${user.id}, ${rows.length}, ${new URL(req.url).searchParams.toString() || null})`;
 
   // Séparateur ";" + BOM UTF-8 : ouverture directe et correcte dans Excel (version française)
   const lines = [

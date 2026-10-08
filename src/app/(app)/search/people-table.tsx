@@ -15,9 +15,11 @@ type Props = {
   /** Filtres courants sous forme de query string (sans pagination). */
   filterQuery: string;
   hasFilters: boolean;
+  /** Emails masqués pour cet utilisateur. */
+  hideEmails?: boolean;
 };
 
-export default function PeopleTable({ rows, total, isAdmin, filterQuery, hasFilters }: Props) {
+export default function PeopleTable({ rows, total, isAdmin, filterQuery, hasFilters, hideEmails }: Props) {
   const router = useRouter();
   const [selected, setSelected] = useState<Set<number>>(new Set());
   const [allMatching, setAllMatching] = useState(false);
@@ -104,11 +106,22 @@ export default function PeopleTable({ rows, total, isAdmin, filterQuery, hasFilt
       )}
 
       <div className="overflow-x-auto rounded-2xl bg-white shadow-soft">
-        <table className="min-w-full text-sm">
+        <table className="w-full table-fixed text-sm">
+          <colgroup>
+            {isAdmin && <col className="w-10" />}
+            <col className="w-[14%]" />
+            <col className="w-[15%]" />
+            <col className="w-[15%]" />
+            <col className="w-[13%]" />
+            <col className="w-[11%]" />
+            <col className="w-[18%]" />
+            <col className="w-[10%]" />
+            <col className="w-24" />
+          </colgroup>
           <thead className="bg-soft/50 text-left text-xs font-semibold uppercase tracking-wide text-brand-dark">
             <tr>
               {isAdmin && (
-                <th className="w-8 px-3 py-2">
+                <th className="px-3 py-3">
                   <input
                     type="checkbox"
                     aria-label="Tout sélectionner sur la page"
@@ -119,15 +132,15 @@ export default function PeopleTable({ rows, total, isAdmin, filterQuery, hasFilt
                 </th>
               )}
               {["Nom", "Société", "Poste", "Secteur", "Ville", "Email", "Téléphone", ""].map((h, i) => (
-                <th key={i} className="whitespace-nowrap px-3 py-3">{h}</th>
+                <th key={i} className="px-3 py-3">{h}</th>
               ))}
             </tr>
           </thead>
-          <tbody className="divide-y divide-slate-100">
+          <tbody className="divide-y divide-slate-100 align-top">
             {rows.map((p) => (
               <tr key={p.id} className={selected.has(p.id) || allMatching ? "bg-indigo-50" : "hover:bg-slate-50"}>
                 {isAdmin && (
-                  <td className="px-3 py-2">
+                  <td className="break-words px-3 py-3">
                     <input
                       type="checkbox"
                       aria-label="Sélectionner"
@@ -136,23 +149,23 @@ export default function PeopleTable({ rows, total, isAdmin, filterQuery, hasFilt
                     />
                   </td>
                 )}
-                <td className="whitespace-nowrap px-3 py-2 font-medium">
+                <td className="break-words px-3 py-3 font-medium">
                   {[p.first_name, p.last_name].filter(Boolean).join(" ") || "—"}
                 </td>
-                <td className="px-3 py-2">{p.company}</td>
-                <td className="px-3 py-2">{p.job_title}</td>
-                <td className="px-3 py-2">{p.sector}</td>
-                <td className="whitespace-nowrap px-3 py-2">
+                <td className="break-words px-3 py-3">{p.company}</td>
+                <td className="break-words px-3 py-3">{p.job_title}</td>
+                <td className="break-words px-3 py-3">{p.sector}</td>
+                <td className="break-words px-3 py-3">
                   {p.city}
                   {p.postal_code && <span className="text-slate-400"> ({p.postal_code})</span>}
                 </td>
-                <td className="px-3 py-2">
-                  {p.email && <a href={`mailto:${p.email}`} className="text-indigo-600 hover:underline">{p.email}</a>}
+                <td className="break-all px-3 py-3">
+                  {hideEmails ? <span className="text-slate-400">Masqué</span> : p.email && <a href={`mailto:${p.email}`} className="text-indigo-600 hover:underline">{p.email}</a>}
                 </td>
-                <td className="whitespace-nowrap px-3 py-2">{p.phone}</td>
-                <td className="whitespace-nowrap px-3 py-2 text-right">
+                <td className="break-words px-3 py-3">{p.phone}</td>
+                <td className="px-3 py-3 text-right text-xs leading-6">
                   {p.linkedin && /^https?:\/\//i.test(p.linkedin) && (
-                    <a href={p.linkedin} target="_blank" rel="noopener noreferrer" className="mr-3 text-indigo-600 hover:underline">
+                    <a href={p.linkedin} target="_blank" rel="noopener noreferrer" className="block text-indigo-600 hover:underline">
                       LinkedIn
                     </a>
                   )}

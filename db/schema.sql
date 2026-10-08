@@ -45,3 +45,17 @@ CREATE EXTENSION IF NOT EXISTS unaccent;
 ALTER TABLE app_users ENABLE ROW LEVEL SECURITY;
 ALTER TABLE people    ENABLE ROW LEVEL SECURITY;
 ALTER TABLE company_sectors ENABLE ROW LEVEL SECURITY;
+
+-- Droits par utilisateur : masquer les emails dans l'annuaire et les exports
+ALTER TABLE app_users ADD COLUMN IF NOT EXISTS hide_emails BOOLEAN NOT NULL DEFAULT FALSE;
+
+-- Historique des exports CSV (une ligne par téléchargement)
+CREATE TABLE IF NOT EXISTS export_log (
+  id          BIGSERIAL PRIMARY KEY,
+  user_id     INTEGER NOT NULL REFERENCES app_users(id) ON DELETE CASCADE,
+  exported_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  row_count   INTEGER NOT NULL,
+  filters     TEXT
+);
+CREATE INDEX IF NOT EXISTS export_log_user_idx ON export_log (user_id, exported_at DESC);
+ALTER TABLE export_log ENABLE ROW LEVEL SECURITY;

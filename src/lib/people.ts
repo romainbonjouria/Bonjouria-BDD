@@ -24,16 +24,23 @@ function contains(v: string) {
 }
 
 /** Conditions SQL des filtres ; `except` permet d'ignorer un champ (calcul des facettes). */
-function conditions(f: Filters, except?: FilterField) {
+function conditions(f: Filters, except?: FilterField, noEmail = false) {
   const conds = [];
   if (f.q) {
     const p = contains(f.q);
-    conds.push(sql`unaccent(concat_ws(' ', first_name, last_name, email, company, last_name, first_name)) ILIKE unaccent(${p})`);
+    // Un utilisateur sans accès aux emails ne peut pas non plus les retrouver par la recherche libre
+    const text = noEmail
+      ? sql`concat_ws(' ', first_name, last_name, company, last_name, first_name)`
+      : sql`concat_ws(' ', first_name, last_name, email, company, last_name, first_name)`;
+    conds.push(sql`unaccent(${text}) ILIKE unaccent(${p})`);
   }
   // Les filtres viennent de menus déroulants alimentés par la base : correspondance exacte
   for (const k of FILTER_FIELDS) {
     const v = f[k];
-    if (v && k !== except) conds.push(sql`${sql(k)} = ${v}`);
+    if (!v || k === except) continue;
+    // Préfixe « ~ » : filtre « contient » (posé par la recherche en langage naturel)
+    if (v.startsWith("~")) conds.push(sql`unaccent(${sql(k)}) ILIKE unaccent(${contains(v.slice(1))})`);
+    else conds.push(sql`${sql(k)} = ${v}`);
   }
   return conds;
 }
@@ -43,8 +50,14 @@ function whereOf(conds: ReturnType<typeof conditions>) {
   return sql`WHERE ${conds.reduce((acc, c) => sql`${acc} AND ${c}`)}`;
 }
 
-function whereClause(f: Filters) {
-  return whereOf(conditions(f));
+function whereClause(f: Filters, noEmail = false) {
+  return whereOf(conditions(f, undefined, noEmail));
+}
+
+/** Retire les emails des fiches pour un utilisateur sans droit de les voir. */
+function maskEmails<T extends { email: string | null }>(rows: T[], hide: boolean) {
+  if (hide) for (const r of rows) r.email = null;
+  return rows;
 }
 
 export type Facets = Record<FilterField, { value: string; count: number }[]>;
@@ -54,10 +67,10 @@ const FACET_LIMIT = 2000;
  * Valeurs disponibles pour chaque menu déroulant, avec leur nombre de fiches,
  * en tenant compte des autres filtres actifs (mais pas de celui du menu lui-même).
  */
-export async function facetValues(f: Filters): Promise<Facets> {
+export async function facetValues(f: Filters, noEmail = false): Promise<Facets> {
   const lists = await Promise.all(
     FILTER_FIELDS.map((k) => {
-      const conds = [...conditions(f, k), sql`${sql(k)} IS NOT NULL`, sql`${sql(k)} <> ''`];
+      const conds = [...conditions(f, k, noEmail), sql`${sql(k)} IS NOT NULL`, sql`${sql(k)} <> ''`];
       return sql<{ value: string; count: number }[]>`
         SELECT ${sql(k)} AS value, count(*)::int AS count FROM people ${whereOf(conds)}
         GROUP BY 1 ORDER BY 1 LIMIT ${FACET_LIMIT}`;
@@ -69,21 +82,22 @@ export async function facetValues(f: Filters): Promise<Facets> {
 
 const ORDER = sql`ORDER BY last_name NULLS LAST, first_name NULLS LAST, id`;
 
-export async function searchPeople(f: Filters, page: number, pageSize: number) {
+export async function searchPeople(f: Filters, page: number, pageSize: number, noEmail = false) {
   const [[{ total }], rows] = await Promise.all([
-    sql<{ total: number }[]>`SELECT count(*)::int AS total FROM people ${whereClause(f)}`,
+    sql<{ total: number }[]>`SELECT count(*)::int AS total FROM people ${whereClause(f, noEmail)}`,
     sql<Person[]>`
-      SELECT id, ${sql(PERSON_KEYS)} FROM people ${whereClause(f)} ${ORDER}
+      SELECT id, ${sql(PERSON_KEYS)} FROM people ${whereClause(f, noEmail)} ${ORDER}
       LIMIT ${pageSize} OFFSET ${(page - 1) * pageSize}`,
   ]);
-  return { total, rows };
+  return { total, rows: maskEmails(rows, noEmail) };
 }
 
 export const EXPORT_LIMIT = 100_000;
 
-export async function exportPeople(f: Filters) {
-  return sql<Person[]>`
-    SELECT id, ${sql(PERSON_KEYS)} FROM people ${whereClause(f)} ${ORDER} LIMIT ${EXPORT_LIMIT}`;
+export async function exportPeople(f: Filters, noEmail = false) {
+  const rows = await sql<Person[]>`
+    SELECT id, ${sql(PERSON_KEYS)} FROM people ${whereClause(f, noEmail)} ${ORDER} LIMIT ${EXPORT_LIMIT}`;
+  return maskEmails(rows, noEmail);
 }
 
 export async function deletePeopleByIds(ids: number[]) {
