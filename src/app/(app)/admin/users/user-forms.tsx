@@ -4,7 +4,8 @@ import Link from "next/link";
 import { useActionState, useEffect, useRef, useState } from "react";
 import type { Role } from "@/lib/session";
 import {
-  createUser, deleteUser, inviteUser, resetPassword, revokeInvitation, updateUser, type ActionResult,
+  createUser, deleteUser, inviteUser, resendInvitation, resetPassword, revokeInvitation, setGroupQuota, updateUser,
+  type ActionResult,
 } from "./actions";
 
 export type GroupOption = { id: number; name: string };
@@ -82,14 +83,26 @@ export function InviteForm({ isSuper, groups }: { isSuper: boolean; groups: Grou
   );
 }
 
-export function RevokeInvitation({ id }: { id: number }) {
-  const [state, action, pending] = useActionState(revokeInvitation, undefined);
+/** Relancer (nouveau lien + nouvel email) ou annuler une invitation en attente. */
+export function InvitationActions({ id }: { id: number }) {
+  const [resendState, resendAction, resending] = useActionState(resendInvitation, undefined);
+  const [revokeState, revokeAction, revoking] = useActionState(revokeInvitation, undefined);
   return (
-    <form action={action}>
-      <input type="hidden" name="id" value={id} />
-      <button className="btn-secondary btn-sm" disabled={pending}>Annuler</button>
-      {state?.error && <p className="alert-error mt-1">{state.error}</p>}
-    </form>
+    <div className="w-full sm:w-auto sm:text-right">
+      <div className="flex justify-end gap-2">
+        <form action={resendAction}>
+          <input type="hidden" name="id" value={id} />
+          <button className="btn-secondary btn-sm" disabled={resending}>{resending ? "Envoi…" : "Relancer"}</button>
+        </form>
+        <form action={revokeAction}>
+          <input type="hidden" name="id" value={id} />
+          <button className="btn-secondary btn-sm" disabled={revoking}>Annuler</button>
+        </form>
+      </div>
+      <Feedback state={resendState} />
+      {resendState?.link && <CopyLink link={resendState.link} />}
+      {revokeState?.error && <p className="alert-error mt-1">{revokeState.error}</p>}
+    </div>
   );
 }
 
@@ -231,6 +244,41 @@ export function GroupUserRow({ user }: { user: RowUser }) {
           <button className={user.active ? "btn-secondary btn-sm" : "btn-primary btn-sm"} disabled={pending}>
             {user.active ? "Fermer l’accès" : "Rouvrir l’accès"}
           </button>
+        </form>
+        <Feedback state={state} />
+      </td>
+    </tr>
+  );
+}
+
+// ---------- Quotas par groupe (super admin) ----------
+
+export type GroupQuotaItem = {
+  id: number;
+  name: string;
+  users: number;
+  pending: number;
+  exported: number;
+  maxUsers: number | null;
+  maxExports: number | null;
+};
+
+export function GroupQuotaRow({ group }: { group: GroupQuotaItem }) {
+  const [state, action, pending] = useActionState(setGroupQuota, undefined);
+  return (
+    <tr className="align-top">
+      <td className="px-3 py-3 font-medium">{group.name}</td>
+      <td className="px-3 py-3 text-slate-500">
+        {group.users} compte{group.users > 1 ? "s" : ""}
+        {group.pending > 0 && ` + ${group.pending} invitation${group.pending > 1 ? "s" : ""}`}
+      </td>
+      <td className="px-3 py-3 text-slate-500">{group.exported.toLocaleString("fr-FR")} ce mois</td>
+      <td className="px-3 py-3" colSpan={2}>
+        <form action={action} className="flex flex-wrap items-center gap-2">
+          <input type="hidden" name="id" value={group.id} />
+          <input name="max_users" type="number" min={0} defaultValue={group.maxUsers ?? ""} placeholder="Comptes max" className="input w-32 py-1" />
+          <input name="max_exports_month" type="number" min={0} defaultValue={group.maxExports ?? ""} placeholder="Exports / mois" className="input w-36 py-1" />
+          <button className="btn-secondary btn-sm" disabled={pending}>Enregistrer</button>
         </form>
         <Feedback state={state} />
       </td>

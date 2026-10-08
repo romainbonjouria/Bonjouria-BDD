@@ -1,7 +1,8 @@
 import Link from "next/link";
 import { requireUser } from "@/lib/auth";
-import { FIELD_LABEL, FILTER_FIELDS, type Filters } from "@/lib/fields";
+import { FILTER_FIELDS, FILTER_LABEL, type Filters } from "@/lib/fields";
 import { EXPORT_LIMIT, facetValues, parseFilters, searchPeople } from "@/lib/people";
+import { groupQuota } from "@/lib/quotas";
 import FilterMulti from "./filter-multi";
 import PeopleTable from "./people-table";
 
@@ -27,6 +28,10 @@ export default async function SearchPage({
   const filters = parseFilters(params);
   const page = Math.max(1, Number(params.page) || 1);
 
+  // Quota mensuel d'exports du groupe (le super admin n'est pas concerné)
+  const quota = user.role !== "super_admin" && user.group_id ? await groupQuota(user.group_id) : null;
+  const quotaLeft = quota?.maxExportsMonth != null ? Math.max(0, quota.maxExportsMonth - quota.exportedThisMonth) : null;
+
   const [{ total, rows }, facets] = await Promise.all([searchPeople(filters, page, PAGE_SIZE, user.hide_emails), facetValues(filters, user.hide_emails)]);
   // On masque les filtres sans aucune valeur en base (ex. colonnes absentes des CSV importés)
   const visibleFilters = FILTER_FIELDS.filter((k) => facets[k].length > 0 || filters[k]);
@@ -44,7 +49,7 @@ export default async function SearchPage({
           <FilterMulti
             key={`${k}:${(filters[k] ?? []).join("|")}`}
             name={k}
-            label={FIELD_LABEL[k]}
+            label={FILTER_LABEL[k]}
             values={filters[k] ?? []}
             options={facets[k]}
           />
@@ -60,11 +65,18 @@ export default async function SearchPage({
           <strong>{total.toLocaleString("fr-FR")}</strong> personne{total > 1 ? "s" : ""} trouvée{total > 1 ? "s" : ""}
           {hasFilters && " pour ces critères"}
         </p>
-        {total > 0 && (
-          <a href={`/api/export?${toQuery(filters)}`} className="btn-primary">
-            ⬇ Exporter en CSV{total > EXPORT_LIMIT && ` (${EXPORT_LIMIT.toLocaleString("fr-FR")} max.)`}
-          </a>
-        )}
+        {total > 0 &&
+          (quotaLeft !== null && Math.min(total, EXPORT_LIMIT) > quotaLeft ? (
+            <span className="rounded-xl bg-soft/50 px-4 py-2.5 text-sm text-slate-700">
+              Export indisponible : {Math.min(total, EXPORT_LIMIT).toLocaleString("fr-FR")} personnes demandées, quota restant ce mois-ci :{" "}
+              {quotaLeft.toLocaleString("fr-FR")}. Affinez la recherche.
+            </span>
+          ) : (
+            <a href={`/api/export?${toQuery(filters)}`} className="btn-primary">
+              ⬇ Exporter en CSV{total > EXPORT_LIMIT && ` (${EXPORT_LIMIT.toLocaleString("fr-FR")} max.)`}
+              {quotaLeft !== null && <span className="font-normal opacity-80">· {quotaLeft.toLocaleString("fr-FR")} restantes ce mois</span>}
+            </a>
+          ))}
       </div>
 
       <PeopleTable

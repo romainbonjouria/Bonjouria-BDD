@@ -1,4 +1,5 @@
 import { getCurrentUser } from "@/lib/auth";
+import { classifyTitles, refreshJobFamilies } from "@/lib/job-detect";
 import { upsertPeople, type ImportRow } from "@/lib/people";
 import { companyKey, detectSectors, emailDomain } from "@/lib/sector-detect";
 
@@ -56,6 +57,13 @@ export async function POST(req: Request) {
 
   try {
     const result = await upsertPeople(rows);
+    // Familles de métiers : ne doit jamais bloquer l'import (rattrapable depuis « Familles de métiers »)
+    try {
+      await classifyTitles(rows.map((r) => str(r.job_title)).filter(Boolean), body?.detectSector === true);
+      await refreshJobFamilies();
+    } catch (err) {
+      console.error("Classement des postes en échec", err);
+    }
     return Response.json({ ...result, detected });
   } catch (err) {
     console.error("Import error", err);

@@ -41,8 +41,10 @@ export function matchHeader(header: string): PersonField | null {
 }
 
 // Filtres de recherche disponibles (en plus de la recherche libre "q")
-export const FILTER_FIELDS = ["city", "sector", "company", "job_title", "postal_code", "country"] as const satisfies readonly PersonField[];
+// job_family est une colonne dérivée (regroupement des postes), absente des CSV et de la fiche
+export const FILTER_FIELDS = ["city", "sector", "company", "job_family", "job_title", "postal_code", "country"] as const;
 export type FilterField = (typeof FILTER_FIELDS)[number];
+export const FILTER_LABEL: Record<FilterField, string> = { ...FIELD_LABEL, job_family: "Famille de métier" };
 // Chaque filtre accepte plusieurs valeurs (OU entre valeurs d'un même filtre, ET entre filtres)
 export type Filters = { q?: string } & Partial<Record<FilterField, string[]>>;
 

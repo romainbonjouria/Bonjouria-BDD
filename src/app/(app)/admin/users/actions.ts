@@ -7,6 +7,7 @@ import { headers } from "next/headers";
 import { requireManager, requireSuperAdmin, type CurrentUser } from "@/lib/auth";
 import { sql } from "@/lib/db";
 import { sendInvitationEmail } from "@/lib/mailer";
+import { userQuotaError } from "@/lib/quotas";
 import { ensureSchema } from "@/lib/schema";
 import type { Role } from "@/lib/session";
 
@@ -55,6 +56,10 @@ export async function createUser(_prev: ActionResult, fd: FormData): Promise<Act
   }
   if (password.length < MIN_PASSWORD) return { error: `Mot de passe : ${MIN_PASSWORD} caractères minimum.` };
   if (role === "admin" && !groupId) return { error: "Un admin doit appartenir à un groupe." };
+  if (groupId) {
+    const quotaError = await userQuotaError(groupId);
+    if (quotaError) return { error: quotaError };
+  }
 
   const hash = await bcrypt.hash(password, 10);
   const [row] = await sql`
@@ -155,6 +160,9 @@ export async function inviteUser(_prev: ActionResult, fd: FormData): Promise<Act
     if (!groupId) return { error: "Votre compte n'est rattaché à aucun groupe." };
   }
 
+  const quotaError = await userQuotaError(groupId);
+  if (quotaError) return { error: quotaError };
+
   const [existing] = await sql`SELECT 1 FROM app_users WHERE username = ${email}`;
   if (existing) return { error: `Un compte existe déjà pour ${email}.` };
 
@@ -173,6 +181,53 @@ export async function inviteUser(_prev: ActionResult, fd: FormData): Promise<Act
   return sent
     ? { ok: `Invitation envoyée à ${email}.` }
     : { ok: `Invitation créée pour ${email}. Transmettez-lui ce lien (valable ${INVITE_DAYS} jours) :`, link };
+}
+
+/** Nouveau lien (et nouvel email) pour une invitation en attente ; l'ancien lien cesse de fonctionner. */
+export async function resendInvitation(_prev: ActionResult, fd: FormData): Promise<ActionResult> {
+  const me = await requireManager();
+  const id = Number(fd.get("id"));
+  if (!Number.isInteger(id)) return { error: "Invitation invalide." };
+
+  const [inv] = await sql<{ id: number; email: string; group_id: number; group_name: string }[]>`
+    SELECT i.id, i.email, i.group_id, g.name AS group_name FROM invitations i JOIN groups g ON g.id = i.group_id
+    WHERE i.id = ${id} AND i.used_at IS NULL ${me.role === "super_admin" ? sql`` : sql`AND i.group_id = ${me.group_id ?? 0}`}`;
+  if (!inv) return { error: "Invitation introuvable ou déjà utilisée." };
+
+  const token = randomBytes(32).toString("base64url");
+  const tokenHash = createHash("sha256").update(token).digest("hex");
+  await sql`
+    UPDATE invitations SET token_hash = ${tokenHash}, created_at = now(), invited_by = ${me.id},
+      expires_at = now() + ${`${INVITE_DAYS} days`}::interval
+    WHERE id = ${inv.id}`;
+
+  const link = `${await appOrigin()}/invite/${token}`;
+  const sent = await sendInvitationEmail({ to: inv.email, link, groupName: inv.group_name, inviter: me.username });
+
+  revalidatePath("/admin/users");
+  return sent
+    ? { ok: `Invitation renvoyée à ${inv.email}.` }
+    : { ok: `Nouveau lien pour ${inv.email} (valable ${INVITE_DAYS} jours) :`, link };
+}
+
+// ---------- Quotas (super admin) ----------
+
+const quotaValue = (v: FormDataEntryValue | null) => {
+  const s = String(v ?? "").trim();
+  if (s === "") return null;
+  const n = Number(s);
+  return Number.isInteger(n) && n >= 0 ? n : NaN;
+};
+
+export async function setGroupQuota(_prev: ActionResult, fd: FormData): Promise<ActionResult> {
+  await requireSuperAdmin();
+  const id = Number(fd.get("id"));
+  const maxUsers = quotaValue(fd.get("max_users"));
+  const maxExports = quotaValue(fd.get("max_exports_month"));
+  if (!Number.isInteger(id)) return { error: "Groupe invalide." };
+  if (Number.isNaN(maxUsers) || Number.isNaN(maxExports)) return { error: "Quotas : nombres entiers positifs, ou vide pour illimité." };
+  await sql`UPDATE groups SET max_users = ${maxUsers}, max_exports_month = ${maxExports} WHERE id = ${id}`;
+  return done("Quotas enregistrés.");
 }
 
 export async function revokeInvitation(_prev: ActionResult, fd: FormData): Promise<ActionResult> {

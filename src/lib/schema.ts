@@ -48,6 +48,30 @@ async function migrate() {
     )`;
   await sql`ALTER TABLE invitations ENABLE ROW LEVEL SECURITY`;
 
+  // Familles de métiers (regroupement des intitulés de poste)
+  await sql`ALTER TABLE people ADD COLUMN IF NOT EXISTS job_family TEXT`;
+  await sql`CREATE INDEX IF NOT EXISTS people_job_family_idx ON people (job_family)`;
+  await sql`
+    CREATE TABLE IF NOT EXISTS job_families (
+      title_key     TEXT PRIMARY KEY,
+      family        TEXT NOT NULL,
+      source        TEXT NOT NULL,
+      classified_at TIMESTAMPTZ NOT NULL DEFAULT now()
+    )`;
+  await sql`ALTER TABLE job_families ENABLE ROW LEVEL SECURITY`;
+
+  // Historique des connexions (tableau de bord) et quotas par groupe
+  await sql`
+    CREATE TABLE IF NOT EXISTS login_log (
+      id        BIGSERIAL PRIMARY KEY,
+      user_id   INTEGER NOT NULL REFERENCES app_users(id) ON DELETE CASCADE,
+      logged_at TIMESTAMPTZ NOT NULL DEFAULT now()
+    )`;
+  await sql`CREATE INDEX IF NOT EXISTS login_log_user_idx ON login_log (user_id, logged_at DESC)`;
+  await sql`ALTER TABLE login_log ENABLE ROW LEVEL SECURITY`;
+  await sql`ALTER TABLE groups ADD COLUMN IF NOT EXISTS max_users INTEGER`;
+  await sql`ALTER TABLE groups ADD COLUMN IF NOT EXISTS max_exports_month INTEGER`;
+
   // Rôles : super_admin / admin / user
   const constraints = await sql<{ conname: string; def: string }[]>`
     SELECT conname, pg_get_constraintdef(oid) AS def FROM pg_constraint

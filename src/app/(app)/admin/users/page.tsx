@@ -2,7 +2,9 @@ import { requireManager } from "@/lib/auth";
 import { sql } from "@/lib/db";
 import { isSuperAdmin } from "@/lib/roles";
 import type { Role } from "@/lib/session";
-import { CreateUserForm, GroupUserRow, InviteForm, RevokeInvitation, UserRow, type GroupOption } from "./user-forms";
+import {
+  CreateUserForm, GroupQuotaRow, GroupUserRow, InvitationActions, InviteForm, UserRow, type GroupOption, type GroupQuotaItem,
+} from "./user-forms";
 
 type UserListItem = {
   id: number;
@@ -25,7 +27,7 @@ export default async function UsersPage() {
   const scope = superAdmin ? sql`TRUE` : sql`u.group_id = ${me.group_id ?? 0} AND u.role = 'user'`;
   const inviteScope = superAdmin ? sql`TRUE` : sql`i.group_id = ${me.group_id ?? 0}`;
 
-  const [users, groups, invitations] = await Promise.all([
+  const [users, groups, invitations, quotaRows] = await Promise.all([
     sql<UserListItem[]>`
       SELECT u.id, u.username, u.role, u.active, u.last_login_at, u.group_id, g.name AS group_name,
              coalesce((SELECT sum(e.row_count) FROM export_log e
@@ -37,7 +39,21 @@ export default async function UsersPage() {
       SELECT i.id, i.email, i.role, g.name AS group_name, i.expires_at
       FROM invitations i JOIN groups g ON g.id = i.group_id
       WHERE i.used_at IS NULL AND i.expires_at > now() AND ${inviteScope} ORDER BY i.created_at DESC`,
+    superAdmin
+      ? sql<{ id: number; name: string; max_users: number | null; max_exports_month: number | null; users: number; pending: number; exported: number }[]>`
+          SELECT g.id, g.name, g.max_users, g.max_exports_month,
+            (SELECT count(*)::int FROM app_users u WHERE u.group_id = g.id) AS users,
+            (SELECT count(*)::int FROM invitations i WHERE i.group_id = g.id AND i.used_at IS NULL AND i.expires_at > now()) AS pending,
+            (SELECT coalesce(sum(e.row_count), 0)::int FROM export_log e JOIN app_users u ON u.id = e.user_id
+              WHERE u.group_id = g.id
+                AND e.exported_at >= date_trunc('month', now() AT TIME ZONE 'Europe/Paris') AT TIME ZONE 'Europe/Paris') AS exported
+          FROM groups g ORDER BY g.name`
+      : Promise.resolve([]),
   ]);
+  const quotaGroups: GroupQuotaItem[] = quotaRows.map((g) => ({
+    id: g.id, name: g.name, users: g.users, pending: g.pending, exported: g.exported,
+    maxUsers: g.max_users, maxExports: g.max_exports_month,
+  }));
   const groupName = groups.find((g) => g.id === me.group_id)?.name;
 
   const rows = users.map((u) => ({
@@ -73,10 +89,24 @@ export default async function UsersPage() {
                 <span className="font-medium">{i.email}</span>
                 <span className="text-slate-500">{i.role === "admin" ? "Admin" : "Utilisateur"} · {i.group_name}</span>
                 <span className="text-xs text-slate-400">expire le {fmtDate(i.expires_at)}</span>
-                <span className="ml-auto"><RevokeInvitation id={i.id} /></span>
+                <span className="ml-auto"><InvitationActions id={i.id} /></span>
               </li>
             ))}
           </ul>
+        </div>
+      )}
+
+      {quotaGroups.length > 0 && (
+        <div className="card overflow-x-auto">
+          <h2 className="mb-1 font-medium">Groupes et quotas</h2>
+          <p className="mb-3 font-serif text-sm text-slate-500">
+            Nombre de comptes (invitations en attente comprises) et de personnes exportables par mois pour chaque société. Vide = illimité.
+          </p>
+          <table className="w-full text-sm">
+            <tbody className="divide-y divide-slate-100">
+              {quotaGroups.map((g) => <GroupQuotaRow key={g.id} group={g} />)}
+            </tbody>
+          </table>
         </div>
       )}
 

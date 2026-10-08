@@ -89,3 +89,25 @@ CREATE TABLE IF NOT EXISTS invitations (
 );
 ALTER TABLE groups ENABLE ROW LEVEL SECURITY;
 ALTER TABLE invitations ENABLE ROW LEVEL SECURITY;
+
+-- Familles de métiers : regroupement des intitulés de poste libres
+ALTER TABLE people ADD COLUMN IF NOT EXISTS job_family TEXT;
+CREATE INDEX IF NOT EXISTS people_job_family_idx ON people (job_family);
+CREATE TABLE IF NOT EXISTS job_families (
+  title_key     TEXT PRIMARY KEY,   -- intitulé normalisé (minuscules, sans accents)
+  family        TEXT NOT NULL,
+  source        TEXT NOT NULL,      -- regle | ia
+  classified_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+ALTER TABLE job_families ENABLE ROW LEVEL SECURITY;
+
+-- Historique des connexions (tableau de bord) et quotas par groupe
+CREATE TABLE IF NOT EXISTS login_log (
+  id        BIGSERIAL PRIMARY KEY,
+  user_id   INTEGER NOT NULL REFERENCES app_users(id) ON DELETE CASCADE,
+  logged_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS login_log_user_idx ON login_log (user_id, logged_at DESC);
+ALTER TABLE login_log ENABLE ROW LEVEL SECURITY;
+ALTER TABLE groups ADD COLUMN IF NOT EXISTS max_users INTEGER;            -- NULL = illimité
+ALTER TABLE groups ADD COLUMN IF NOT EXISTS max_exports_month INTEGER;    -- personnes exportables par mois, NULL = illimité

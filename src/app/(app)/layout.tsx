@@ -22,9 +22,15 @@ export default async function AppLayout({ children }: { children: React.ReactNod
               <>
                 <Link href="/admin/import" className="hover:text-brand">Import CSV</Link>
                 <Link href="/admin/people/new" className="hover:text-brand">Ajouter une personne</Link>
+                <Link href="/admin/job-families" className="hover:text-brand">Familles de métiers</Link>
               </>
             )}
-            {manager && <Link href="/admin/users" className="hover:text-brand">Utilisateurs</Link>}
+            {manager && (
+              <>
+                <Link href="/admin/dashboard" className="hover:text-brand">Tableau de bord</Link>
+                <Link href="/admin/users" className="hover:text-brand">Utilisateurs</Link>
+              </>
+            )}
           </nav>
           <div className="ml-auto flex items-center gap-3 text-sm">
             <Link href="/account" className="text-slate-600 hover:text-brand">

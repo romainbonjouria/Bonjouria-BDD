@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { requireSuperAdmin } from "@/lib/auth";
 import { sql } from "@/lib/db";
+import { classifyTitles, refreshJobFamilies } from "@/lib/job-detect";
 import { PERSON_KEYS, type PersonField } from "@/lib/fields";
 import { deletePeopleByIds, deletePeopleMatching, parseFilters } from "@/lib/people";
 
@@ -51,6 +52,12 @@ export async function savePerson(_prev: PersonActionResult, fd: FormData): Promi
   } catch (err) {
     if ((err as { code?: string }).code === "23505") return { error: "Une autre fiche utilise déjà cet email." };
     throw err;
+  }
+  try {
+    if (values.job_title) await classifyTitles([values.job_title], true);
+    await refreshJobFamilies();
+  } catch (err) {
+    console.error("Classement du poste en échec", err);
   }
   redirect("/search");
 }
