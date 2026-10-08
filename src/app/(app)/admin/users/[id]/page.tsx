@@ -1,7 +1,10 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
+import { requireManager } from "@/lib/auth";
 import { sql } from "@/lib/db";
+import { isSuperAdmin, ROLE_LABEL } from "@/lib/roles";
 import { ensureSchema } from "@/lib/schema";
+import type { Role } from "@/lib/session";
 import { EmailAccessForm } from "./email-access-form";
 
 const MONTHS = 6;
@@ -12,12 +15,19 @@ export default async function UserDetailPage({ params }: { params: Promise<{ id:
   const { id } = await params;
   const uid = Number(id);
   if (!Number.isInteger(uid)) notFound();
+  const me = await requireManager();
+  const superAdmin = isSuperAdmin(me.role);
   await ensureSchema();
 
   const [user] = await sql<
-    { id: number; username: string; role: string; active: boolean; hide_emails: boolean; created_at: Date; last_login_at: Date | null }[]
-  >`SELECT id, username, role, active, hide_emails, created_at, last_login_at FROM app_users WHERE id = ${uid}`;
-  if (!user) notFound();
+    {
+      id: number; username: string; role: Role; active: boolean; hide_emails: boolean; created_at: Date;
+      last_login_at: Date | null; group_id: number | null; group_name: string | null;
+    }[]
+  >`SELECT u.id, u.username, u.role, u.active, u.hide_emails, u.created_at, u.last_login_at, u.group_id, g.name AS group_name
+    FROM app_users u LEFT JOIN groups g ON g.id = u.group_id WHERE u.id = ${uid}`;
+  // Un admin ne consulte que les utilisateurs de son groupe
+  if (!user || (!superAdmin && !(user.role === "user" && user.group_id !== null && user.group_id === me.group_id))) notFound();
 
   const [monthly, recent, [totals]] = await Promise.all([
     sql<{ month: string; exports: number; people: number }[]>`
@@ -44,8 +54,9 @@ export default async function UserDetailPage({ params }: { params: Promise<{ id:
       <div className="flex flex-wrap items-center gap-3">
         <h1 className="text-xl">{user.username}</h1>
         <span className="rounded-full bg-soft px-2.5 py-0.5 text-xs font-semibold text-brand-dark">
-          {user.role === "admin" ? "Administrateur" : "Utilisateur"}
+          {ROLE_LABEL[user.role]}
         </span>
+        {user.group_name && <span className="text-sm text-slate-500">{user.group_name}</span>}
         {!user.active && <span className="rounded-full bg-slate-200 px-2.5 py-0.5 text-xs font-semibold text-slate-600">Désactivé</span>}
       </div>
 
@@ -67,7 +78,16 @@ export default async function UserDetailPage({ params }: { params: Promise<{ id:
         </div>
       </div>
 
-      <EmailAccessForm userId={user.id} hidden={user.hide_emails} />
+      {superAdmin ? (
+        <EmailAccessForm userId={user.id} hidden={user.hide_emails} />
+      ) : (
+        <div className="card">
+          <h2 className="mb-1 font-medium">Visibilité des emails</h2>
+          <p className="font-serif text-sm text-slate-500">
+            Emails {user.hide_emails ? "masqués" : "visibles"} pour cet utilisateur. Ce réglage est géré uniquement par le super admin.
+          </p>
+        </div>
+      )}
 
       <div className="grid gap-4 lg:grid-cols-2">
         <div className="card">

@@ -1,8 +1,10 @@
+import { requireSuperAdmin } from "@/lib/auth";
 import { notFound } from "next/navigation";
 import { getPerson } from "@/lib/people";
 import PersonForm from "./person-form";
 
 export default async function PersonPage({ params }: { params: Promise<{ id: string }> }) {
+  await requireSuperAdmin();
   const { id } = await params;
   if (id === "new") {
     return <PersonForm person={null} />;

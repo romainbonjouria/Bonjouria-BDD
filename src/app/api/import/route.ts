@@ -13,8 +13,8 @@ const str = (v: unknown) => (v == null ? "" : String(v).trim());
 // Reçoit un lot de lignes déjà découpées/mappées par le navigateur (voir admin/import).
 export async function POST(req: Request) {
   const user = await getCurrentUser();
-  if (!user || user.role !== "admin") {
-    return Response.json({ error: "Accès réservé aux administrateurs" }, { status: 403 });
+  if (!user || user.role !== "super_admin") {
+    return Response.json({ error: "Accès réservé au super admin" }, { status: 403 });
   }
 
   const body = await req.json().catch(() => null);

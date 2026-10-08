@@ -9,7 +9,7 @@ export default function LoginForm() {
   return (
     <form action={action} className="space-y-4">
       <div>
-        <label className="label" htmlFor="username">Identifiant</label>
+        <label className="label" htmlFor="username">Identifiant ou email</label>
         <input id="username" name="username" className="input" autoComplete="username" required autoFocus />
       </div>
       <div>

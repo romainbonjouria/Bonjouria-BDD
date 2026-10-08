@@ -1,6 +1,6 @@
 // Réinitialise le mot de passe d'un compte (et le réactive), directement en base.
 // Usage : npm run user:reset -- <identifiant> <nouveau-mot-de-passe> [--admin]
-//   --admin : redonne aussi le rôle administrateur
+//   --admin : redonne aussi le rôle super admin
 import "dotenv/config";
 import postgres from "postgres";
 import bcrypt from "bcryptjs";
@@ -23,7 +23,7 @@ try {
   const hash = await bcrypt.hash(password, 10);
   const login = username.trim().toLowerCase();
   const rows = makeAdmin
-    ? await sql`UPDATE app_users SET password_hash = ${hash}, active = true, role = 'admin' WHERE username = ${login} RETURNING username, role`
+    ? await sql`UPDATE app_users SET password_hash = ${hash}, active = true, role = 'super_admin' WHERE username = ${login} RETURNING username, role`
     : await sql`UPDATE app_users SET password_hash = ${hash}, active = true WHERE username = ${login} RETURNING username, role`;
   if (rows.length === 0) {
     const existing = await sql`SELECT username, role FROM app_users ORDER BY username`;

@@ -1,8 +1,10 @@
+import { requireSuperAdmin } from "@/lib/auth";
 import { BATCH_FIELDS } from "@/lib/fields";
 import { distinctValues } from "@/lib/people";
 import ImportForm from "./import-form";
 
 export default async function ImportPage() {
+  await requireSuperAdmin();
   const suggestions = await distinctValues(BATCH_FIELDS);
 
   return (

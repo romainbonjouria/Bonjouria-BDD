@@ -2,7 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
-import { requireAdmin } from "@/lib/auth";
+import { requireSuperAdmin } from "@/lib/auth";
 import { sql } from "@/lib/db";
 import { PERSON_KEYS, type PersonField } from "@/lib/fields";
 import { deletePeopleByIds, deletePeopleMatching, parseFilters } from "@/lib/people";
@@ -16,7 +16,7 @@ export type PersonActionResult = { error?: string } | undefined;
 export async function bulkDeletePeople(
   target: { ids: number[] } | { query: string },
 ): Promise<{ deleted: number } | { error: string }> {
-  await requireAdmin();
+  await requireSuperAdmin();
   let deleted: number;
   if ("ids" in target) {
     const ids = target.ids.map(Number).filter(Number.isInteger).slice(0, 10_000);
@@ -29,7 +29,7 @@ export async function bulkDeletePeople(
 }
 
 export async function savePerson(_prev: PersonActionResult, fd: FormData): Promise<PersonActionResult> {
-  await requireAdmin();
+  await requireSuperAdmin();
   const id = fd.get("id") ? Number(fd.get("id")) : null;
 
   const values = {} as Record<PersonField, string | null>;
@@ -56,7 +56,7 @@ export async function savePerson(_prev: PersonActionResult, fd: FormData): Promi
 }
 
 export async function deletePerson(fd: FormData) {
-  await requireAdmin();
+  await requireSuperAdmin();
   await sql`DELETE FROM people WHERE id = ${Number(fd.get("id"))}`;
   redirect("/search");
 }

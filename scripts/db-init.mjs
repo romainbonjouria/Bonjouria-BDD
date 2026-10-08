@@ -22,7 +22,7 @@ try {
     const hash = await bcrypt.hash(ADMIN_PASSWORD, 10);
     const [row] = await sql`
       INSERT INTO app_users (username, password_hash, role)
-      VALUES (${ADMIN_USERNAME.trim().toLowerCase()}, ${hash}, 'admin')
+      VALUES (${ADMIN_USERNAME.trim().toLowerCase()}, ${hash}, 'super_admin')
       ON CONFLICT (username) DO NOTHING
       RETURNING id`;
     console.log(row ? `✔ Admin "${ADMIN_USERNAME}" créé` : `• Admin "${ADMIN_USERNAME}" existe déjà (inchangé)`);

@@ -1,10 +1,12 @@
 import Link from "next/link";
 import { requireUser } from "@/lib/auth";
+import { isManager, isSuperAdmin, ROLE_LABEL } from "@/lib/roles";
 import { logout } from "../login/actions";
 
 export default async function AppLayout({ children }: { children: React.ReactNode }) {
   const user = await requireUser();
-  const isAdmin = user.role === "admin";
+  const superAdmin = isSuperAdmin(user.role);
+  const manager = isManager(user.role);
 
   return (
     <>
@@ -16,18 +18,18 @@ export default async function AppLayout({ children }: { children: React.ReactNod
           </Link>
           <nav className="flex flex-wrap gap-5 text-sm font-medium text-slate-600">
             <Link href="/search" className="hover:text-brand">Recherche</Link>
-            {isAdmin && (
+            {superAdmin && (
               <>
                 <Link href="/admin/import" className="hover:text-brand">Import CSV</Link>
                 <Link href="/admin/people/new" className="hover:text-brand">Ajouter une personne</Link>
-                <Link href="/admin/users" className="hover:text-brand">Utilisateurs</Link>
               </>
             )}
+            {manager && <Link href="/admin/users" className="hover:text-brand">Utilisateurs</Link>}
           </nav>
           <div className="ml-auto flex items-center gap-3 text-sm">
             <Link href="/account" className="text-slate-600 hover:text-brand">
               {user.username}
-              {isAdmin && <span className="ml-1.5 rounded-full bg-soft px-2 py-0.5 text-xs font-semibold text-brand-dark">admin</span>}
+              {manager && <span className="ml-1.5 rounded-full bg-soft px-2 py-0.5 text-xs font-semibold text-brand-dark">{ROLE_LABEL[user.role]}</span>}
             </Link>
             <form action={logout}>
               <button className="btn-secondary btn-sm">Déconnexion</button>

@@ -5,7 +5,8 @@ import { SESSION_COOKIE, verifySession } from "@/lib/session";
 // Les pages et routes revérifient ensuite le compte en BDD (actif, rôle).
 export async function proxy(req: NextRequest) {
   const { pathname } = req.nextUrl;
-  if (pathname === "/login" || pathname === "/api/health") return NextResponse.next();
+  // /invite : page publique où une personne invitée choisit son mot de passe
+  if (pathname === "/login" || pathname === "/api/health" || pathname.startsWith("/invite/")) return NextResponse.next();
 
   const session = await verifySession(req.cookies.get(SESSION_COOKIE)?.value);
   if (!session) {
@@ -14,7 +15,7 @@ export async function proxy(req: NextRequest) {
     }
     return NextResponse.redirect(new URL("/login", req.url));
   }
-  if (pathname.startsWith("/admin") && session.role !== "admin") {
+  if (pathname.startsWith("/admin") && session.role === "user") {
     return NextResponse.redirect(new URL("/search", req.url));
   }
   return NextResponse.next();

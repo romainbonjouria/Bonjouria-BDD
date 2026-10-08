@@ -3,7 +3,9 @@
 Application web de recherche de contacts professionnels.
 
 - **Utilisateurs** : recherche multicritère (ville, secteur d'activité, société, poste, code postal, pays, recherche libre), export CSV du résultat.
-- **Administrateurs** : import CSV (mise à jour si l'email existe déjà), ajout / modification / suppression de fiches, gestion des comptes (création, rôle, activation, mot de passe).
+- **Super admin** : import CSV, ajout / modification / suppression de fiches, groupes (sociétés), comptes, rôles et visibilité des emails.
+- **Admins de groupe** : invitent par email des utilisateurs dans leur société, ouvrent/ferment leurs accès et suivent leur usage (connexions, exports). Ils ne gèrent pas la visibilité des emails.
+  Variables facultatives pour l'envoi automatique des invitations : `RESEND_API_KEY`, `MAIL_FROM`, `APP_URL`. Sans elles, le lien d'invitation s'affiche pour être transmis à la main.
 
 Stack : Next.js 16 · PostgreSQL (Supabase) · hébergement Vercel.
 

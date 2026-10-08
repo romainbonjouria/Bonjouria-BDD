@@ -70,7 +70,7 @@ export default async function SearchPage({
       <PeopleTable
         rows={rows}
         total={total}
-        isAdmin={user.role === "admin"}
+        isAdmin={user.role === "super_admin"}
         filterQuery={toQuery(filters)}
         hasFilters={hasFilters}
         hideEmails={user.hide_emails}
