@@ -43,7 +43,8 @@ export function matchHeader(header: string): PersonField | null {
 // Filtres de recherche disponibles (en plus de la recherche libre "q")
 export const FILTER_FIELDS = ["city", "sector", "company", "job_title", "postal_code", "country"] as const satisfies readonly PersonField[];
 export type FilterField = (typeof FILTER_FIELDS)[number];
-export type Filters = Partial<Record<FilterField | "q", string>>;
+// Chaque filtre accepte plusieurs valeurs (OU entre valeurs d'un même filtre, ET entre filtres)
+export type Filters = { q?: string } & Partial<Record<FilterField, string[]>>;
 
 // Champs saisissables une fois pour tout un fichier importé (appliqués aux lignes où la cellule est vide)
 export const BATCH_FIELDS = ["sector", "city"] as const satisfies readonly PersonField[];

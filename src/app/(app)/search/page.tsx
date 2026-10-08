@@ -2,15 +2,17 @@ import Link from "next/link";
 import { requireUser } from "@/lib/auth";
 import { FIELD_LABEL, FILTER_FIELDS, type Filters } from "@/lib/fields";
 import { EXPORT_LIMIT, facetValues, parseFilters, searchPeople } from "@/lib/people";
-import FilterSelect from "./filter-select";
+import FilterMulti from "./filter-multi";
 import PeopleTable from "./people-table";
-import SearchForm from "./search-form";
 
 const PAGE_SIZE = 50;
 
 function toQuery(filters: Filters, extra: Record<string, string> = {}) {
   const p = new URLSearchParams();
-  for (const [k, v] of Object.entries(filters)) if (v) p.set(k, v);
+  for (const [k, v] of Object.entries(filters)) {
+    if (Array.isArray(v)) for (const x of v) p.append(k, x);
+    else if (v) p.set(k, v);
+  }
   for (const [k, v] of Object.entries(extra)) p.set(k, v);
   return p.toString();
 }
@@ -23,7 +25,6 @@ export default async function SearchPage({
   const user = await requireUser();
   const params = await searchParams;
   const filters = parseFilters(params);
-  const ask = typeof params.ask === "string" ? params.ask.slice(0, 300) : undefined;
   const page = Math.max(1, Number(params.page) || 1);
 
   const [{ total, rows }, facets] = await Promise.all([searchPeople(filters, page, PAGE_SIZE, user.hide_emails), facetValues(filters, user.hide_emails)]);
@@ -34,25 +35,25 @@ export default async function SearchPage({
 
   return (
     <div className="space-y-5">
-      <SearchForm>
+      <form className="card grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4" method="get">
         <div className="sm:col-span-2 lg:col-span-4">
-          <label className="label" htmlFor="q">Recherche libre ou demande en langage naturel</label>
-          <input id="q" name="q" defaultValue={filters.q} className="input" placeholder="ex. Dupont — ou « tous les peintres de France »" />
+          <label className="label" htmlFor="q">Recherche libre (nom, prénom, email, société)</label>
+          <input id="q" name="q" defaultValue={filters.q} className="input" placeholder="ex. Dupont" />
         </div>
         {visibleFilters.map((k) => (
-          <FilterSelect key={k} name={k} label={FIELD_LABEL[k]} value={filters[k]} options={facets[k]} />
+          <FilterMulti
+            key={`${k}:${(filters[k] ?? []).join("|")}`}
+            name={k}
+            label={FIELD_LABEL[k]}
+            values={filters[k] ?? []}
+            options={facets[k]}
+          />
         ))}
         <div className="flex items-end gap-2 sm:col-span-2 lg:col-span-4 lg:justify-end">
           <Link href="/search" className="btn-secondary">Réinitialiser</Link>
           <button className="btn-primary">Rechercher</button>
         </div>
-      </SearchForm>
-
-      {ask && (
-        <p className="rounded-xl bg-soft/50 px-4 py-2.5 text-sm text-slate-700">
-          Filtres appliqués automatiquement depuis votre demande : <em className="font-serif">« {ask} »</em>
-        </p>
-      )}
+      </form>
 
       <div className="flex flex-wrap items-center justify-between gap-3">
         <p className="text-sm text-slate-600">

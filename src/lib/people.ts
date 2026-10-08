@@ -5,15 +5,17 @@ import { FILTER_FIELDS, PERSON_KEYS, type FilterField, type Filters, type Person
 type SearchParams = Record<string, string | string[] | undefined> | URLSearchParams;
 
 export function parseFilters(params: SearchParams): Filters {
-  const get = (k: string) => {
-    const v = params instanceof URLSearchParams ? params.get(k) : params[k];
-    const s = (Array.isArray(v) ? v[0] : v)?.trim();
-    return s ? s.slice(0, 500) : undefined;
+  const getAll = (k: string) => {
+    const v = params instanceof URLSearchParams ? params.getAll(k) : params[k];
+    const list = Array.isArray(v) ? v : v === undefined ? [] : [v];
+    return [...new Set(list.map((s) => s.trim().slice(0, 500)).filter(Boolean))].slice(0, 200);
   };
   const filters: Filters = {};
-  for (const k of ["q", ...FILTER_FIELDS] as const) {
-    const v = get(k);
-    if (v) filters[k] = v;
+  const q = getAll("q")[0];
+  if (q) filters.q = q;
+  for (const k of FILTER_FIELDS) {
+    const v = getAll(k);
+    if (v.length) filters[k] = v;
   }
   return filters;
 }
@@ -37,10 +39,8 @@ function conditions(f: Filters, except?: FilterField, noEmail = false) {
   // Les filtres viennent de menus déroulants alimentés par la base : correspondance exacte
   for (const k of FILTER_FIELDS) {
     const v = f[k];
-    if (!v || k === except) continue;
-    // Préfixe « ~ » : filtre « contient » (posé par la recherche en langage naturel)
-    if (v.startsWith("~")) conds.push(sql`unaccent(${sql(k)}) ILIKE unaccent(${contains(v.slice(1))})`);
-    else conds.push(sql`${sql(k)} = ${v}`);
+    if (!v?.length || k === except) continue;
+    conds.push(sql`${sql(k)} IN ${sql(v)}`);
   }
   return conds;
 }
