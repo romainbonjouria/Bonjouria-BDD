@@ -121,7 +121,7 @@ export default function ImportForm({ suggestions }: { suggestions: Record<BatchF
           type="file"
           accept=".csv,text/csv"
           onChange={(e) => onFile(e.target.files?.[0])}
-          className="block text-sm file:mr-3 file:rounded-md file:border-0 file:bg-indigo-50 file:px-3 file:py-2 file:text-indigo-700 hover:file:bg-indigo-100"
+          className="block text-sm file:mr-3 file:rounded-full file:border-0 file:bg-indigo-50 file:px-3 file:py-2 file:text-indigo-700 hover:file:bg-indigo-100"
         />
         {parseError && <p className="alert-error mt-3">{parseError}</p>}
 

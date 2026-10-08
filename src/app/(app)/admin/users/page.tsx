@@ -21,7 +21,7 @@ export default async function UsersPage() {
     <div className="space-y-5">
       <h1 className="text-xl font-semibold">Utilisateurs</h1>
       <CreateUserForm />
-      <div className="overflow-x-auto rounded-lg border border-slate-200 bg-white shadow-sm">
+      <div className="overflow-x-auto rounded-2xl bg-white shadow-soft">
         <table className="min-w-full text-sm">
           <thead className="bg-slate-100 text-left text-xs uppercase tracking-wide text-slate-600">
             <tr>

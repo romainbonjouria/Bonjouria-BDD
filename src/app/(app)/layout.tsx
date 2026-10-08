@@ -8,23 +8,26 @@ export default async function AppLayout({ children }: { children: React.ReactNod
 
   return (
     <>
-      <header className="border-b border-slate-200 bg-white">
-        <div className="mx-auto flex max-w-7xl flex-wrap items-center gap-x-6 gap-y-2 px-4 py-3">
-          <Link href="/search" className="font-semibold text-indigo-700">BonjourIA</Link>
-          <nav className="flex flex-wrap gap-4 text-sm text-slate-600">
-            <Link href="/search" className="hover:text-slate-900">Recherche</Link>
+      <header className="sticky top-0 z-10 border-b border-soft/70 bg-white/90 backdrop-blur">
+        <div className="mx-auto flex max-w-7xl flex-wrap items-center gap-x-6 gap-y-2 px-4 py-2.5">
+          <Link href="/search" className="flex items-center">
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img src="https://bonjouria.fr/wp-content/uploads/2026/03/Bonjour-IA_logo_noir-et-rose.svg" alt="BONJOUR IA" className="h-10 w-auto" />
+          </Link>
+          <nav className="flex flex-wrap gap-5 text-sm font-medium text-slate-600">
+            <Link href="/search" className="hover:text-brand">Recherche</Link>
             {isAdmin && (
               <>
-                <Link href="/admin/import" className="hover:text-slate-900">Import CSV</Link>
-                <Link href="/admin/people/new" className="hover:text-slate-900">Ajouter une personne</Link>
-                <Link href="/admin/users" className="hover:text-slate-900">Utilisateurs</Link>
+                <Link href="/admin/import" className="hover:text-brand">Import CSV</Link>
+                <Link href="/admin/people/new" className="hover:text-brand">Ajouter une personne</Link>
+                <Link href="/admin/users" className="hover:text-brand">Utilisateurs</Link>
               </>
             )}
           </nav>
           <div className="ml-auto flex items-center gap-3 text-sm">
-            <Link href="/account" className="text-slate-600 hover:text-slate-900">
+            <Link href="/account" className="text-slate-600 hover:text-brand">
               {user.username}
-              {isAdmin && <span className="ml-1.5 rounded bg-indigo-100 px-1.5 py-0.5 text-xs text-indigo-700">admin</span>}
+              {isAdmin && <span className="ml-1.5 rounded-full bg-soft px-2 py-0.5 text-xs font-semibold text-brand-dark">admin</span>}
             </Link>
             <form action={logout}>
               <button className="btn-secondary btn-sm">Déconnexion</button>

@@ -84,7 +84,7 @@ export default function PeopleTable({ rows, total, isAdmin, filterQuery, hasFilt
       {message?.error && <p className="alert-error">{message.error}</p>}
 
       {isAdmin && count > 0 && (
-        <div className="flex flex-wrap items-center gap-3 rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-sm">
+        <div className="flex flex-wrap items-center gap-3 rounded-xl border border-soft bg-indigo-50 px-3 py-2 text-sm">
           <span>
             <strong>{count.toLocaleString("fr-FR")}</strong> sélectionnée{count > 1 ? "s" : ""}
             {allMatching && (hasFilters ? " (toute la recherche)" : " (toute la base)")}
@@ -103,9 +103,9 @@ export default function PeopleTable({ rows, total, isAdmin, filterQuery, hasFilt
         </div>
       )}
 
-      <div className="overflow-x-auto rounded-lg border border-slate-200 bg-white shadow-sm">
+      <div className="overflow-x-auto rounded-2xl bg-white shadow-soft">
         <table className="min-w-full text-sm">
-          <thead className="bg-slate-100 text-left text-xs uppercase tracking-wide text-slate-600">
+          <thead className="bg-soft/50 text-left text-xs font-semibold uppercase tracking-wide text-brand-dark">
             <tr>
               {isAdmin && (
                 <th className="w-8 px-3 py-2">
@@ -119,7 +119,7 @@ export default function PeopleTable({ rows, total, isAdmin, filterQuery, hasFilt
                 </th>
               )}
               {["Nom", "Société", "Poste", "Secteur", "Ville", "Email", "Téléphone", ""].map((h, i) => (
-                <th key={i} className="whitespace-nowrap px-3 py-2">{h}</th>
+                <th key={i} className="whitespace-nowrap px-3 py-3">{h}</th>
               ))}
             </tr>
           </thead>
