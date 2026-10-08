@@ -17,18 +17,24 @@ export async function acceptInvitation(_prev: { error?: string } | undefined, fd
   if (!inv) return { error: "Cette invitation n'est plus valide. Demandez-en une nouvelle." };
 
   const hash = await bcrypt.hash(password, 10);
-  const user = await sql.begin(async (tx) => {
-    // Marque l'invitation comme utilisée en premier : une seule personne peut l'utiliser
-    const claimed = await tx`UPDATE invitations SET used_at = now() WHERE id = ${inv.id} AND used_at IS NULL RETURNING id`;
-    if (claimed.length === 0) return null;
-    const [u] = await tx<{ id: number; username: string; role: Role }[]>`
+  // Pas de sql.begin : la connexion (pooler Supabase, max_pipeline: 0) n'autorise pas les transactions.
+  // On réserve d'abord l'invitation (usage unique), puis on la libère si la création échoue.
+  const claimed = await sql`UPDATE invitations SET used_at = now() WHERE id = ${inv.id} AND used_at IS NULL RETURNING id`;
+  if (claimed.length === 0) return { error: "Cette invitation a déjà été utilisée." };
+
+  let user: { id: number; username: string; role: Role } | undefined;
+  try {
+    [user] = await sql<{ id: number; username: string; role: Role }[]>`
       INSERT INTO app_users (username, password_hash, role, group_id)
       VALUES (${inv.email}, ${hash}, ${inv.role}, ${inv.group_id})
       ON CONFLICT (username) DO NOTHING RETURNING id, username, role`;
-    if (!u) throw new Error("exists");
-    return u;
-  }).catch(() => null);
-  if (!user) return { error: "Impossible de créer le compte (invitation déjà utilisée ou compte existant)." };
+  } catch (err) {
+    console.error("Création du compte invité en échec", err);
+  }
+  if (!user) {
+    await sql`UPDATE invitations SET used_at = NULL WHERE id = ${inv.id}`;
+    return { error: "Impossible de créer le compte : un compte existe déjà pour cette adresse, ou une erreur est survenue." };
+  }
 
   await openSession(user);
   redirect("/search");
