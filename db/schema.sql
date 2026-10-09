@@ -111,3 +111,12 @@ CREATE INDEX IF NOT EXISTS login_log_user_idx ON login_log (user_id, logged_at D
 ALTER TABLE login_log ENABLE ROW LEVEL SECURITY;
 ALTER TABLE groups ADD COLUMN IF NOT EXISTS max_users INTEGER;            -- NULL = illimité
 ALTER TABLE groups ADD COLUMN IF NOT EXISTS max_exports_month INTEGER;    -- personnes exportables par mois, NULL = illimité
+
+-- Espaces de données : base commune (owner_group_id NULL) ou espace privé d'un groupe.
+-- shared_access = le groupe voit aussi la base commune ; sinon uniquement ses propres fiches.
+ALTER TABLE groups ADD COLUMN IF NOT EXISTS shared_access BOOLEAN NOT NULL DEFAULT TRUE;
+ALTER TABLE people ADD COLUMN IF NOT EXISTS owner_group_id INTEGER REFERENCES groups(id) ON DELETE CASCADE;
+CREATE UNIQUE INDEX IF NOT EXISTS people_email_shared_uniq ON people (email) WHERE owner_group_id IS NULL;
+CREATE UNIQUE INDEX IF NOT EXISTS people_email_private_uniq ON people (owner_group_id, email) WHERE owner_group_id IS NOT NULL;
+CREATE INDEX IF NOT EXISTS people_owner_idx ON people (owner_group_id);
+ALTER TABLE people DROP CONSTRAINT IF EXISTS people_email_key;

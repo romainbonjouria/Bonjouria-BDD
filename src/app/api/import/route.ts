@@ -23,6 +23,8 @@ export async function POST(req: Request) {
   if (!Array.isArray(rawRows) || rawRows.length > MAX_ROWS_PER_REQUEST) {
     return Response.json({ error: `Lot invalide (1 à ${MAX_ROWS_PER_REQUEST} lignes)` }, { status: 400 });
   }
+  // Espace de destination : base commune (par défaut) ou espace privé d'un groupe
+  const ownerGroupId = Number.isInteger(body?.groupId) && body.groupId > 0 ? (body.groupId as number) : null;
   const rows = rawRows.filter((r): r is ImportRow => !!r && typeof r === "object");
 
   // Détection du secteur pour les lignes qui n'en ont pas mais ont une société
@@ -56,7 +58,7 @@ export async function POST(req: Request) {
   }
 
   try {
-    const result = await upsertPeople(rows);
+    const result = await upsertPeople(rows, ownerGroupId);
     // Familles de métiers : ne doit jamais bloquer l'import (rattrapable depuis « Familles de métiers »)
     try {
       await classifyTitles(rows.map((r) => str(r.job_title)).filter(Boolean), body?.detectSector === true);

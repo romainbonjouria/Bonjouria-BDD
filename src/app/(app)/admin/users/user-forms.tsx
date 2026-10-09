@@ -4,7 +4,7 @@ import Link from "next/link";
 import { useActionState, useEffect, useRef, useState } from "react";
 import type { Role } from "@/lib/session";
 import {
-  createUser, deleteUser, inviteUser, resendInvitation, resetPassword, revokeInvitation, setGroupQuota, updateUser,
+  createGroup, createUser, deleteUser, inviteUser, resendInvitation, resetPassword, revokeInvitation, setGroupQuota, updateUser,
   type ActionResult,
 } from "./actions";
 
@@ -261,7 +261,37 @@ export type GroupQuotaItem = {
   exported: number;
   maxUsers: number | null;
   maxExports: number | null;
+  sharedAccess: boolean;
+  privateCount: number;
 };
+
+export function CreateGroupForm() {
+  const [state, action, pending] = useActionState(createGroup, undefined);
+  const formRef = useRef<HTMLFormElement>(null);
+  useEffect(() => {
+    if (state?.ok) formRef.current?.reset();
+  }, [state]);
+  return (
+    <form ref={formRef} action={action} className="card">
+      <h2 className="mb-1 font-medium">Créer une société</h2>
+      <p className="mb-3 font-serif text-sm text-slate-500">
+        Choisissez si elle accède à la grosse base. Sans accès à la base commune, elle ne voit que les fiches de son espace privé,
+        alimenté uniquement par vos imports (Import CSV → destination).
+      </p>
+      <div className="flex flex-wrap items-end gap-3">
+        <div className="min-w-56 flex-1">
+          <label className="label" htmlFor="group-name">Nom de la société</label>
+          <input id="group-name" name="name" className="input" required placeholder="Société X" />
+        </div>
+        <label className="flex items-center gap-2 pb-3 text-sm">
+          <input type="checkbox" name="shared_access" defaultChecked /> Accès à la base commune
+        </label>
+        <button className="btn-primary" disabled={pending}>Créer</button>
+      </div>
+      <Feedback state={state} />
+    </form>
+  );
+}
 
 export function GroupQuotaRow({ group }: { group: GroupQuotaItem }) {
   const [state, action, pending] = useActionState(setGroupQuota, undefined);
@@ -272,12 +302,19 @@ export function GroupQuotaRow({ group }: { group: GroupQuotaItem }) {
         {group.users} compte{group.users > 1 ? "s" : ""}
         {group.pending > 0 && ` + ${group.pending} invitation${group.pending > 1 ? "s" : ""}`}
       </td>
-      <td className="px-3 py-3 text-slate-500">{group.exported.toLocaleString("fr-FR")} ce mois</td>
+      <td className="px-3 py-3 text-slate-500">
+        {group.exported.toLocaleString("fr-FR")} export. ce mois
+        <br />
+        <span className="text-xs">{group.privateCount.toLocaleString("fr-FR")} fiche{group.privateCount > 1 ? "s" : ""} privée{group.privateCount > 1 ? "s" : ""}</span>
+      </td>
       <td className="px-3 py-3" colSpan={2}>
         <form action={action} className="flex flex-wrap items-center gap-2">
           <input type="hidden" name="id" value={group.id} />
           <input name="max_users" type="number" min={0} defaultValue={group.maxUsers ?? ""} placeholder="Comptes max" className="input w-32 py-1" />
           <input name="max_exports_month" type="number" min={0} defaultValue={group.maxExports ?? ""} placeholder="Exports / mois" className="input w-36 py-1" />
+          <label className="flex items-center gap-1 text-xs">
+            <input type="checkbox" name="shared_access" defaultChecked={group.sharedAccess} /> Base commune
+          </label>
           <button className="btn-secondary btn-sm" disabled={pending}>Enregistrer</button>
         </form>
         <Feedback state={state} />

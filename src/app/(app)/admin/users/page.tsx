@@ -3,7 +3,7 @@ import { sql } from "@/lib/db";
 import { isSuperAdmin } from "@/lib/roles";
 import type { Role } from "@/lib/session";
 import {
-  CreateUserForm, GroupQuotaRow, GroupUserRow, InvitationActions, InviteForm, UserRow, type GroupOption, type GroupQuotaItem,
+  CreateGroupForm, CreateUserForm, GroupQuotaRow, GroupUserRow, InvitationActions, InviteForm, UserRow, type GroupOption, type GroupQuotaItem,
 } from "./user-forms";
 
 type UserListItem = {
@@ -40,8 +40,9 @@ export default async function UsersPage() {
       FROM invitations i JOIN groups g ON g.id = i.group_id
       WHERE i.used_at IS NULL AND i.expires_at > now() AND ${inviteScope} ORDER BY i.created_at DESC`,
     superAdmin
-      ? sql<{ id: number; name: string; max_users: number | null; max_exports_month: number | null; users: number; pending: number; exported: number }[]>`
-          SELECT g.id, g.name, g.max_users, g.max_exports_month,
+      ? sql<{ id: number; name: string; max_users: number | null; max_exports_month: number | null; shared_access: boolean; private_count: number; users: number; pending: number; exported: number }[]>`
+          SELECT g.id, g.name, g.max_users, g.max_exports_month, g.shared_access,
+            (SELECT count(*)::int FROM people p WHERE p.owner_group_id = g.id) AS private_count,
             (SELECT count(*)::int FROM app_users u WHERE u.group_id = g.id) AS users,
             (SELECT count(*)::int FROM invitations i WHERE i.group_id = g.id AND i.used_at IS NULL AND i.expires_at > now()) AS pending,
             (SELECT coalesce(sum(e.row_count), 0)::int FROM export_log e JOIN app_users u ON u.id = e.user_id
@@ -52,7 +53,7 @@ export default async function UsersPage() {
   ]);
   const quotaGroups: GroupQuotaItem[] = quotaRows.map((g) => ({
     id: g.id, name: g.name, users: g.users, pending: g.pending, exported: g.exported,
-    maxUsers: g.max_users, maxExports: g.max_exports_month,
+    maxUsers: g.max_users, maxExports: g.max_exports_month, sharedAccess: g.shared_access, privateCount: g.private_count,
   }));
   const groupName = groups.find((g) => g.id === me.group_id)?.name;
 
@@ -78,6 +79,7 @@ export default async function UsersPage() {
       </div>
 
       <InviteForm isSuper={superAdmin} groups={groups} />
+      {superAdmin && <CreateGroupForm />}
       {superAdmin && <CreateUserForm groups={groups} />}
 
       {invitations.length > 0 && (
@@ -98,7 +100,7 @@ export default async function UsersPage() {
 
       {quotaGroups.length > 0 && (
         <div className="card overflow-x-auto">
-          <h2 className="mb-1 font-medium">Groupes et quotas</h2>
+          <h2 className="mb-1 font-medium">Groupes, quotas et accès aux données</h2>
           <p className="mb-3 font-serif text-sm text-slate-500">
             Nombre de comptes (invitations en attente comprises) et de personnes exportables par mois pour chaque société. Vide = illimité.
           </p>

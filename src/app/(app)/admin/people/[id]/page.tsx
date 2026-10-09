@@ -1,5 +1,6 @@
 import { requireSuperAdmin } from "@/lib/auth";
 import { notFound } from "next/navigation";
+import { sql } from "@/lib/db";
 import { getPerson } from "@/lib/people";
 import PersonForm from "./person-form";
 
@@ -7,7 +8,8 @@ export default async function PersonPage({ params }: { params: Promise<{ id: str
   await requireSuperAdmin();
   const { id } = await params;
   if (id === "new") {
-    return <PersonForm person={null} />;
+    const groups = await sql<{ id: number; name: string }[]>`SELECT id, name FROM groups ORDER BY name`;
+    return <PersonForm person={null} groups={groups} />;
   }
   const num = Number(id);
   const person = Number.isInteger(num) ? await getPerson(num) : null;

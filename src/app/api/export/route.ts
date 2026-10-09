@@ -2,7 +2,7 @@ import { getCurrentUser } from "@/lib/auth";
 import { PERSON_FIELDS } from "@/lib/fields";
 import { sql } from "@/lib/db";
 import { groupQuota } from "@/lib/quotas";
-import { exportPeople, parseFilters } from "@/lib/people";
+import { exportPeople, parseFilters, viewerOf } from "@/lib/people";
 
 export const dynamic = "force-dynamic";
 
@@ -18,7 +18,7 @@ export async function GET(req: Request) {
   if (!user) return Response.json({ error: "Non authentifié" }, { status: 401 });
 
   const filters = parseFilters(new URL(req.url).searchParams);
-  const rows = await exportPeople(filters, user.hide_emails);
+  const rows = await exportPeople(filters, viewerOf(user));
   // Quota mensuel d'exports du groupe (le super admin n'est pas concerné)
   if (user.role !== "super_admin" && user.group_id) {
     const quota = await groupQuota(user.group_id);

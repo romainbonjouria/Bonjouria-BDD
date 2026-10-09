@@ -23,7 +23,15 @@ async function readText(file: File) {
   }
 }
 
-export default function ImportForm({ suggestions }: { suggestions: Record<BatchField, string[]> }) {
+export default function ImportForm({
+  suggestions,
+  groups,
+}: {
+  suggestions: Record<BatchField, string[]>;
+  groups: { id: number; name: string }[];
+}) {
+  // "" = base commune ; sinon id du groupe propriétaire de l'espace privé
+  const [destination, setDestination] = useState("");
   const [parsed, setParsed] = useState<Parsed | null>(null);
   const [batch, setBatch] = useState<Record<BatchField, string>>({ sector: "", city: "" });
   const [mapping, setMapping] = useState<Record<string, PersonField | "">>({});
@@ -93,7 +101,7 @@ export default function ImportForm({ suggestions }: { suggestions: Record<BatchF
         const res = await fetch("/api/import", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ rows: chunk, detectSector: detect }),
+          body: JSON.stringify({ rows: chunk, detectSector: detect, groupId: destination ? Number(destination) : null }),
         });
         const data = await res.json();
         if (!res.ok) throw new Error(data.error ?? `Erreur ${res.status}`);
@@ -115,6 +123,26 @@ export default function ImportForm({ suggestions }: { suggestions: Record<BatchF
   return (
     <div className="space-y-5">
       <div className="card">
+        <div className="mb-5 border-b border-slate-100 pb-5">
+          <label className="label" htmlFor="destination">Destination des fiches</label>
+          <select
+            id="destination"
+            className="input max-w-md"
+            value={destination}
+            onChange={(e) => setDestination(e.target.value)}
+            disabled={!!progress}
+          >
+            <option value="">Base commune (grosse base)</option>
+            {groups.map((g) => (
+              <option key={g.id} value={g.id}>Espace privé — {g.name}</option>
+            ))}
+          </select>
+          <p className="mt-1.5 text-xs text-slate-500">
+            {destination
+              ? "Ces fiches ne seront visibles que par cette société (et par vous). Un même email peut exister dans la base commune."
+              : "Ces fiches rejoignent la base commune, visible par tous les groupes qui y ont accès."}
+          </p>
+        </div>
         <label className="label" htmlFor="file">Fichier CSV</label>
         <input
           id="file"

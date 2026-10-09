@@ -72,6 +72,15 @@ async function migrate() {
   await sql`ALTER TABLE groups ADD COLUMN IF NOT EXISTS max_users INTEGER`;
   await sql`ALTER TABLE groups ADD COLUMN IF NOT EXISTS max_exports_month INTEGER`;
 
+  // Espaces de données : base commune (owner_group_id NULL) ou espace privé d'un groupe
+  await sql`ALTER TABLE groups ADD COLUMN IF NOT EXISTS shared_access BOOLEAN NOT NULL DEFAULT TRUE`;
+  await sql`ALTER TABLE people ADD COLUMN IF NOT EXISTS owner_group_id INTEGER REFERENCES groups(id) ON DELETE CASCADE`;
+  await sql`CREATE UNIQUE INDEX IF NOT EXISTS people_email_shared_uniq ON people (email) WHERE owner_group_id IS NULL`;
+  await sql`CREATE UNIQUE INDEX IF NOT EXISTS people_email_private_uniq ON people (owner_group_id, email) WHERE owner_group_id IS NOT NULL`;
+  await sql`CREATE INDEX IF NOT EXISTS people_owner_idx ON people (owner_group_id)`;
+  // L'ancienne unicité globale sur l'email empêcherait le même email dans deux espaces
+  await sql`ALTER TABLE people DROP CONSTRAINT IF EXISTS people_email_key`;
+
   // Rôles : super_admin / admin / user
   const constraints = await sql<{ conname: string; def: string }[]>`
     SELECT conname, pg_get_constraintdef(oid) AS def FROM pg_constraint

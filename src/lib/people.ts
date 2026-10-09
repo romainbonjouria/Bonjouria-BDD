@@ -13,6 +13,9 @@ export function parseFilters(params: SearchParams): Filters {
   const filters: Filters = {};
   const q = getAll("q")[0];
   if (q) filters.q = q;
+  // Espace de données (réservé au super admin, ignoré pour les autres) : "shared" ou id de groupe
+  const space = getAll("space")[0];
+  if (space && (space === "shared" || /^\d+$/.test(space))) filters.space = space;
   for (const k of FILTER_FIELDS) {
     const v = getAll(k);
     if (v.length) filters[k] = v;
@@ -25,13 +28,43 @@ function contains(v: string) {
   return "%" + v.replace(/[\\%_]/g, (m) => "\\" + m) + "%";
 }
 
+/**
+ * Qui regarde l'annuaire : détermine les fiches visibles (base commune et/ou espace privé du groupe)
+ * et si les emails sont masqués.
+ */
+export type Viewer = { noEmail: boolean; superAdmin: boolean; groupId: number | null; sharedAccess: boolean };
+
+export const viewerOf = (u: {
+  role: string; hide_emails: boolean; group_id: number | null; shared_access: boolean;
+}): Viewer => ({
+  noEmail: u.hide_emails,
+  superAdmin: u.role === "super_admin",
+  groupId: u.group_id,
+  sharedAccess: u.shared_access,
+});
+
+/** Fiches de la base commune : owner_group_id NULL ; fiches privées : owner_group_id = id du groupe. */
+function spaceCondition(f: Filters, v: Viewer) {
+  if (v.superAdmin) {
+    if (f.space === "shared") return sql`owner_group_id IS NULL`;
+    if (f.space) return sql`owner_group_id = ${Number(f.space)}`;
+    return null;
+  }
+  if (v.groupId === null) return sql`owner_group_id IS NULL`;
+  return v.sharedAccess
+    ? sql`(owner_group_id IS NULL OR owner_group_id = ${v.groupId})`
+    : sql`owner_group_id = ${v.groupId}`;
+}
+
 /** Conditions SQL des filtres ; `except` permet d'ignorer un champ (calcul des facettes). */
-function conditions(f: Filters, except?: FilterField, noEmail = false) {
+function conditions(f: Filters, except: FilterField | undefined, viewer: Viewer) {
   const conds = [];
+  const space = spaceCondition(f, viewer);
+  if (space) conds.push(space);
   if (f.q) {
     const p = contains(f.q);
     // Un utilisateur sans accès aux emails ne peut pas non plus les retrouver par la recherche libre
-    const text = noEmail
+    const text = viewer.noEmail
       ? sql`concat_ws(' ', first_name, last_name, company, last_name, first_name)`
       : sql`concat_ws(' ', first_name, last_name, email, company, last_name, first_name)`;
     conds.push(sql`unaccent(${text}) ILIKE unaccent(${p})`);
@@ -50,8 +83,8 @@ function whereOf(conds: ReturnType<typeof conditions>) {
   return sql`WHERE ${conds.reduce((acc, c) => sql`${acc} AND ${c}`)}`;
 }
 
-function whereClause(f: Filters, noEmail = false) {
-  return whereOf(conditions(f, undefined, noEmail));
+function whereClause(f: Filters, viewer: Viewer) {
+  return whereOf(conditions(f, undefined, viewer));
 }
 
 /** Retire les emails des fiches pour un utilisateur sans droit de les voir. */
@@ -67,10 +100,10 @@ const FACET_LIMIT = 2000;
  * Valeurs disponibles pour chaque menu déroulant, avec leur nombre de fiches,
  * en tenant compte des autres filtres actifs (mais pas de celui du menu lui-même).
  */
-export async function facetValues(f: Filters, noEmail = false): Promise<Facets> {
+export async function facetValues(f: Filters, viewer: Viewer): Promise<Facets> {
   const lists = await Promise.all(
     FILTER_FIELDS.map((k) => {
-      const conds = [...conditions(f, k, noEmail), sql`${sql(k)} IS NOT NULL`, sql`${sql(k)} <> ''`];
+      const conds = [...conditions(f, k, viewer), sql`${sql(k)} IS NOT NULL`, sql`${sql(k)} <> ''`];
       return sql<{ value: string; count: number }[]>`
         SELECT ${sql(k)} AS value, count(*)::int AS count FROM people ${whereOf(conds)}
         GROUP BY 1 ORDER BY 1 LIMIT ${FACET_LIMIT}`;
@@ -82,22 +115,22 @@ export async function facetValues(f: Filters, noEmail = false): Promise<Facets> 
 
 const ORDER = sql`ORDER BY last_name NULLS LAST, first_name NULLS LAST, id`;
 
-export async function searchPeople(f: Filters, page: number, pageSize: number, noEmail = false) {
+export async function searchPeople(f: Filters, page: number, pageSize: number, viewer: Viewer) {
   const [[{ total }], rows] = await Promise.all([
-    sql<{ total: number }[]>`SELECT count(*)::int AS total FROM people ${whereClause(f, noEmail)}`,
+    sql<{ total: number }[]>`SELECT count(*)::int AS total FROM people ${whereClause(f, viewer)}`,
     sql<Person[]>`
-      SELECT id, ${sql(PERSON_KEYS)} FROM people ${whereClause(f, noEmail)} ${ORDER}
+      SELECT id, ${sql(PERSON_KEYS)} FROM people ${whereClause(f, viewer)} ${ORDER}
       LIMIT ${pageSize} OFFSET ${(page - 1) * pageSize}`,
   ]);
-  return { total, rows: maskEmails(rows, noEmail) };
+  return { total, rows: maskEmails(rows, viewer.noEmail) };
 }
 
 export const EXPORT_LIMIT = 100_000;
 
-export async function exportPeople(f: Filters, noEmail = false) {
+export async function exportPeople(f: Filters, viewer: Viewer) {
   const rows = await sql<Person[]>`
-    SELECT id, ${sql(PERSON_KEYS)} FROM people ${whereClause(f, noEmail)} ${ORDER} LIMIT ${EXPORT_LIMIT}`;
-  return maskEmails(rows, noEmail);
+    SELECT id, ${sql(PERSON_KEYS)} FROM people ${whereClause(f, viewer)} ${ORDER} LIMIT ${EXPORT_LIMIT}`;
+  return maskEmails(rows, viewer.noEmail);
 }
 
 export async function deletePeopleByIds(ids: number[]) {
@@ -106,9 +139,9 @@ export async function deletePeopleByIds(ids: number[]) {
   return res.count;
 }
 
-/** Supprime toutes les fiches correspondant aux filtres (sans filtre : toute la table). */
+/** Supprime toutes les fiches correspondant aux filtres (sans filtre : toute la table). Super admin uniquement. */
 export async function deletePeopleMatching(f: Filters) {
-  const res = await sql`DELETE FROM people ${whereClause(f)}`;
+  const res = await sql`DELETE FROM people ${whereClause(f, { noEmail: false, superAdmin: true, groupId: null, sharedAccess: true })}`;
   return res.count;
 }
 
@@ -150,7 +183,7 @@ function clean(raw: ImportRow): CleanRow | null {
  * Insère ou met à jour (clé = email). En cas de mise à jour, une cellule vide
  * dans le CSV ne vient pas effacer une valeur existante.
  */
-export async function upsertPeople(raw: ImportRow[]) {
+export async function upsertPeople(raw: ImportRow[], ownerGroupId: number | null = null) {
   const byEmail = new Map<string, CleanRow>();
   const noEmail: CleanRow[] = [];
   let skipped = 0;
@@ -180,9 +213,17 @@ export async function upsertPeople(raw: ImportRow[]) {
     .map((k) => `${k} = COALESCE(EXCLUDED.${k}, people.${k})`)
     .join(", ");
 
+  // Un même email peut exister dans la base commune et dans l'espace privé d'un groupe : l'unicité se
+  // vérifie dans l'espace de destination (deux index uniques partiels), sans jamais toucher à l'autre.
+  const columns: (PersonField | "owner_group_id")[] = [...PERSON_KEYS, "owner_group_id"];
+  const withOwner = rows.map((r) => ({ ...r, owner_group_id: ownerGroupId }));
+  const conflict =
+    ownerGroupId === null
+      ? sql`ON CONFLICT (email) WHERE owner_group_id IS NULL`
+      : sql`ON CONFLICT (owner_group_id, email) WHERE owner_group_id IS NOT NULL`;
   const result = await sql<{ inserted: boolean }[]>`
-    INSERT INTO people ${sql(rows, PERSON_KEYS)}
-    ON CONFLICT (email) DO UPDATE SET ${sql.unsafe(updates)}, updated_at = now()
+    INSERT INTO people ${sql(withOwner, columns)}
+    ${conflict} DO UPDATE SET ${sql.unsafe(updates)}, updated_at = now()
     RETURNING (xmax = 0) AS inserted`;
 
   const created = result.filter((r) => r.inserted).length;

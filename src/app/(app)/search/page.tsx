@@ -1,7 +1,8 @@
 import Link from "next/link";
 import { requireUser } from "@/lib/auth";
 import { FILTER_FIELDS, FILTER_LABEL, type Filters } from "@/lib/fields";
-import { EXPORT_LIMIT, facetValues, parseFilters, searchPeople } from "@/lib/people";
+import { EXPORT_LIMIT, facetValues, parseFilters, searchPeople, viewerOf } from "@/lib/people";
+import { sql } from "@/lib/db";
 import { groupQuota } from "@/lib/quotas";
 import FilterMulti from "./filter-multi";
 import PeopleTable from "./people-table";
@@ -28,11 +29,16 @@ export default async function SearchPage({
   const filters = parseFilters(params);
   const page = Math.max(1, Number(params.page) || 1);
 
+  const viewer = viewerOf(user);
+  // Le super admin peut restreindre la recherche à la base commune ou à l'espace privé d'une société
+  const spaces = viewer.superAdmin
+    ? await sql<{ id: number; name: string }[]>`SELECT id, name FROM groups WHERE EXISTS (SELECT 1 FROM people p WHERE p.owner_group_id = groups.id) ORDER BY name`
+    : [];
   // Quota mensuel d'exports du groupe (le super admin n'est pas concerné)
   const quota = user.role !== "super_admin" && user.group_id ? await groupQuota(user.group_id) : null;
   const quotaLeft = quota?.maxExportsMonth != null ? Math.max(0, quota.maxExportsMonth - quota.exportedThisMonth) : null;
 
-  const [{ total, rows }, facets] = await Promise.all([searchPeople(filters, page, PAGE_SIZE, user.hide_emails), facetValues(filters, user.hide_emails)]);
+  const [{ total, rows }, facets] = await Promise.all([searchPeople(filters, page, PAGE_SIZE, viewer), facetValues(filters, viewer)]);
   // On masque les filtres sans aucune valeur en base (ex. colonnes absentes des CSV importés)
   const visibleFilters = FILTER_FIELDS.filter((k) => facets[k].length > 0 || filters[k]);
   const pages = Math.max(1, Math.ceil(total / PAGE_SIZE));
@@ -45,6 +51,16 @@ export default async function SearchPage({
           <label className="label" htmlFor="q">Recherche libre (nom, prénom, email, société)</label>
           <input id="q" name="q" defaultValue={filters.q} className="input" placeholder="ex. Dupont" />
         </div>
+        {spaces.length > 0 && (
+          <div>
+            <label className="label" htmlFor="space">Espace de données</label>
+            <select id="space" name="space" defaultValue={filters.space ?? ""} className={`input ${filters.space ? "border-brand bg-indigo-50" : ""}`}>
+              <option value="">Tout</option>
+              <option value="shared">Base commune</option>
+              {spaces.map((g) => <option key={g.id} value={g.id}>Privé — {g.name}</option>)}
+            </select>
+          </div>
+        )}
         {visibleFilters.map((k) => (
           <FilterMulti
             key={`${k}:${(filters[k] ?? []).join("|")}`}

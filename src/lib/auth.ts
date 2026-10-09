@@ -6,7 +6,10 @@ import { sql } from "./db";
 import { ensureSchema } from "./schema";
 import { SESSION_COOKIE, verifySession, type Role } from "./session";
 
-export type CurrentUser = { id: number; username: string; role: Role; hide_emails: boolean; group_id: number | null };
+export type CurrentUser = { id: number; username: string; role: Role; hide_emails: boolean; group_id: number | null;
+  /** Le groupe a accès à la base commune (sinon : uniquement à son espace privé). */
+  shared_access: boolean;
+};
 
 // Le jeton seul ne suffit pas : on revérifie en BDD que le compte existe, est actif,
 // et on relit son rôle (un admin peut l'avoir modifié depuis la connexion).
@@ -16,7 +19,8 @@ export const getCurrentUser = cache(async (): Promise<CurrentUser | null> => {
   if (!session) return null;
   await ensureSchema();
   const [user] = await sql<CurrentUser[]>`
-    SELECT id, username, role, hide_emails, group_id FROM app_users WHERE id = ${session.uid} AND active`;
+    SELECT u.id, u.username, u.role, u.hide_emails, u.group_id, coalesce(g.shared_access, true) AS shared_access
+    FROM app_users u LEFT JOIN groups g ON g.id = u.group_id WHERE u.id = ${session.uid} AND u.active`;
   return user ?? null;
 });
 

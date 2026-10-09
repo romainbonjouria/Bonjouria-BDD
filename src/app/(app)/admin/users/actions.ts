@@ -226,8 +226,24 @@ export async function setGroupQuota(_prev: ActionResult, fd: FormData): Promise<
   const maxExports = quotaValue(fd.get("max_exports_month"));
   if (!Number.isInteger(id)) return { error: "Groupe invalide." };
   if (Number.isNaN(maxUsers) || Number.isNaN(maxExports)) return { error: "Quotas : nombres entiers positifs, ou vide pour illimité." };
-  await sql`UPDATE groups SET max_users = ${maxUsers}, max_exports_month = ${maxExports} WHERE id = ${id}`;
-  return done("Quotas enregistrés.");
+  const sharedAccess = fd.get("shared_access") === "on";
+  await sql`
+    UPDATE groups SET max_users = ${maxUsers}, max_exports_month = ${maxExports}, shared_access = ${sharedAccess}
+    WHERE id = ${id}`;
+  return done("Réglages du groupe enregistrés.");
+}
+
+/** Crée une société (groupe) en choisissant si elle accède à la base commune ou seulement à son espace privé. */
+export async function createGroup(_prev: ActionResult, fd: FormData): Promise<ActionResult> {
+  await requireSuperAdmin();
+  const name = String(fd.get("name") ?? "").trim().slice(0, 100);
+  if (!name) return { error: "Saisissez le nom de la société." };
+  const sharedAccess = fd.get("shared_access") === "on";
+  const [row] = await sql`
+    INSERT INTO groups (name, shared_access) VALUES (${name}, ${sharedAccess})
+    ON CONFLICT (name) DO NOTHING RETURNING id`;
+  if (!row) return { error: `La société « ${name} » existe déjà.` };
+  return done(`Société « ${name} » créée.`);
 }
 
 export async function revokeInvitation(_prev: ActionResult, fd: FormData): Promise<ActionResult> {

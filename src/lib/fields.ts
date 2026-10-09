@@ -46,7 +46,7 @@ export const FILTER_FIELDS = ["city", "sector", "company", "job_family", "job_ti
 export type FilterField = (typeof FILTER_FIELDS)[number];
 export const FILTER_LABEL: Record<FilterField, string> = { ...FIELD_LABEL, job_family: "Famille de métier" };
 // Chaque filtre accepte plusieurs valeurs (OU entre valeurs d'un même filtre, ET entre filtres)
-export type Filters = { q?: string } & Partial<Record<FilterField, string[]>>;
+export type Filters = { q?: string; space?: string } & Partial<Record<FilterField, string[]>>;
 
 // Champs saisissables une fois pour tout un fichier importé (appliqués aux lignes où la cellule est vide)
 export const BATCH_FIELDS = ["sector", "city"] as const satisfies readonly PersonField[];

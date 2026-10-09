@@ -47,7 +47,8 @@ export async function savePerson(_prev: PersonActionResult, fd: FormData): Promi
     if (id) {
       await sql`UPDATE people SET ${sql(values, PERSON_KEYS)}, updated_at = now() WHERE id = ${id}`;
     } else {
-      await sql`INSERT INTO people ${sql(values, PERSON_KEYS)}`;
+      const owner = Number(fd.get("owner_group_id"));
+      await sql`INSERT INTO people ${sql({ ...values, owner_group_id: Number.isInteger(owner) && owner > 0 ? owner : null }, [...PERSON_KEYS, "owner_group_id"])}`;
     }
   } catch (err) {
     if ((err as { code?: string }).code === "23505") return { error: "Une autre fiche utilise déjà cet email." };
