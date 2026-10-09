@@ -25,6 +25,19 @@ export default function PeopleTable({ rows, total, isAdmin, filterQuery, hasFilt
   const [allMatching, setAllMatching] = useState(false);
   const [message, setMessage] = useState<{ ok?: string; error?: string } | null>(null);
   const [pending, startTransition] = useTransition();
+  const [copiedId, setCopiedId] = useState<number | null>(null);
+
+  async function copyLink(id: number, url: string) {
+    try {
+      await navigator.clipboard.writeText(url);
+    } catch {
+      // Presse-papiers indisponible (contexte non sécurisé) : on laisse l'utilisateur copier à la main
+      prompt("Copiez le lien (Ctrl+C) :", url);
+      return;
+    }
+    setCopiedId(id);
+    setTimeout(() => setCopiedId((cur) => (cur === id ? null : cur)), 1500);
+  }
 
   // Nouvelle page / nouvelle recherche : on repart d'une sélection vide
   const rowsKey = rows.map((r) => r.id).join(",");
@@ -165,9 +178,20 @@ export default function PeopleTable({ rows, total, isAdmin, filterQuery, hasFilt
                 <td className="break-words px-3 py-3">{p.phone}</td>
                 <td className="px-3 py-3 text-right text-xs leading-6">
                   {p.linkedin && /^https?:\/\//i.test(p.linkedin) && (
-                    <a href={p.linkedin} target="_blank" rel="noopener noreferrer" className="block text-indigo-600 hover:underline">
-                      LinkedIn
-                    </a>
+                    <span className="flex items-center justify-end gap-2">
+                      <a href={p.linkedin} target="_blank" rel="noopener noreferrer" className="text-indigo-600 hover:underline">
+                        LinkedIn
+                      </a>
+                      <button
+                        type="button"
+                        onClick={() => copyLink(p.id, p.linkedin!)}
+                        title="Copier le lien LinkedIn"
+                        aria-label="Copier le lien LinkedIn"
+                        className="rounded-md border border-slate-200 px-1.5 py-0.5 text-[11px] text-slate-500 transition hover:border-soft hover:bg-soft/40 hover:text-brand"
+                      >
+                        {copiedId === p.id ? "Copié ✓" : "Copier"}
+                      </button>
+                    </span>
                   )}
                   {isAdmin && (
                     <Link href={`/admin/people/${p.id}`} className="text-slate-500 hover:text-slate-900">Modifier</Link>
