@@ -4,7 +4,7 @@ import Link from "next/link";
 import { useActionState, useEffect, useRef, useState } from "react";
 import type { Role } from "@/lib/session";
 import {
-  createGroup, createUser, deleteUser, inviteUser, resendInvitation, resetPassword, revokeInvitation, setGroupQuota, updateUser,
+  clearGroupData, createGroup, createUser, deleteGroup, deleteUser, inviteUser, resendInvitation, resetPassword, revokeInvitation, setGroupQuota, updateUser,
   type ActionResult,
 } from "./actions";
 
@@ -295,6 +295,8 @@ export function CreateGroupForm() {
 
 export function GroupQuotaRow({ group }: { group: GroupQuotaItem }) {
   const [state, action, pending] = useActionState(setGroupQuota, undefined);
+  const [clearState, clearAction, clearing] = useActionState(clearGroupData, undefined);
+  const [delState, delAction, deleting] = useActionState(deleteGroup, undefined);
   return (
     <tr className="align-top">
       <td className="px-3 py-3 font-medium">{group.name}</td>
@@ -318,6 +320,40 @@ export function GroupQuotaRow({ group }: { group: GroupQuotaItem }) {
           <button className="btn-secondary btn-sm" disabled={pending}>Enregistrer</button>
         </form>
         <Feedback state={state} />
+      </td>
+      <td className="px-3 py-3">
+        <div className="flex flex-wrap items-center gap-2">
+          <Link href={`/search?space=${group.id}`} className="btn-secondary btn-sm">Gérer les données</Link>
+          {group.privateCount > 0 && (
+            <form
+              action={clearAction}
+              onSubmit={(e) => {
+                if (!confirm(`Supprimer les ${group.privateCount} fiche(s) privée(s) de « ${group.name} » ? La société et ses comptes sont conservés.`)) {
+                  e.preventDefault();
+                }
+              }}
+            >
+              <input type="hidden" name="id" value={group.id} />
+              <button className="btn-secondary btn-sm" disabled={clearing}>Vider l’espace</button>
+            </form>
+          )}
+          <form
+            action={delAction}
+            onSubmit={(e) => {
+              const typed = prompt(
+                `Supprimer définitivement la société « ${group.name} », ses ${group.users} compte(s) et ses ${group.privateCount} fiche(s) privée(s) ?\n\nTapez le nom de la société pour confirmer :`,
+              );
+              if (typed === null) return e.preventDefault();
+              (e.currentTarget.elements.namedItem("confirm") as HTMLInputElement).value = typed;
+            }}
+          >
+            <input type="hidden" name="id" value={group.id} />
+            <input type="hidden" name="confirm" />
+            <button className="btn-danger btn-sm" disabled={deleting}>Supprimer</button>
+          </form>
+        </div>
+        <Feedback state={clearState} />
+        <Feedback state={delState} />
       </td>
     </tr>
   );

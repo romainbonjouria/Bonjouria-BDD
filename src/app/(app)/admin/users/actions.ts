@@ -233,6 +233,35 @@ export async function setGroupQuota(_prev: ActionResult, fd: FormData): Promise<
   return done("Réglages du groupe enregistrés.");
 }
 
+/** Vide l'espace privé d'une société (ses fiches), sans supprimer la société ni ses comptes. */
+export async function clearGroupData(_prev: ActionResult, fd: FormData): Promise<ActionResult> {
+  await requireSuperAdmin();
+  const id = Number(fd.get("id"));
+  if (!Number.isInteger(id)) return { error: "Groupe invalide." };
+  const res = await sql`DELETE FROM people WHERE owner_group_id = ${id}`;
+  revalidatePath("/search");
+  return done(`${res.count} fiche${res.count > 1 ? "s" : ""} privée${res.count > 1 ? "s" : ""} supprimée${res.count > 1 ? "s" : ""}.`);
+}
+
+/**
+ * Supprime une société avec ses comptes, ses invitations et son espace privé.
+ * Les comptes sont supprimés d'abord : sans groupe, un utilisateur verrait la base commune.
+ */
+export async function deleteGroup(_prev: ActionResult, fd: FormData): Promise<ActionResult> {
+  const me = await requireSuperAdmin();
+  const id = Number(fd.get("id"));
+  if (!Number.isInteger(id)) return { error: "Groupe invalide." };
+  if (me.group_id === id) return { error: "Votre propre compte appartient à ce groupe : retirez-le d'abord." };
+  const [group] = await sql<{ name: string }[]>`SELECT name FROM groups WHERE id = ${id}`;
+  if (!group) return { error: "Société introuvable." };
+  if (String(fd.get("confirm") ?? "").trim() !== group.name) return { error: "Confirmation incorrecte : le nom saisi ne correspond pas." };
+
+  const users = await sql`DELETE FROM app_users WHERE group_id = ${id}`;
+  await sql`DELETE FROM groups WHERE id = ${id}`; // supprime aussi ses invitations et ses fiches privées
+  revalidatePath("/search");
+  return done(`Société « ${group.name} » supprimée (${users.count} compte${users.count > 1 ? "s" : ""}).`);
+}
+
 /** Crée une société (groupe) en choisissant si elle accède à la base commune ou seulement à son espace privé. */
 export async function createGroup(_prev: ActionResult, fd: FormData): Promise<ActionResult> {
   await requireSuperAdmin();
