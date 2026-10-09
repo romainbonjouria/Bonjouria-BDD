@@ -10,7 +10,7 @@ export default async function InvitePage({ params }: { params: Promise<{ token: 
     <main className="flex min-h-screen items-center justify-center p-4">
       <div className="card w-full max-w-sm p-8">
         {/* eslint-disable-next-line @next/next/no-img-element */}
-        <img src="https://bonjouria.fr/wp-content/uploads/2026/03/Bonjour-IA_logo-baseline_noir-et-rose.svg" alt="BONJOUR IA" className="mx-auto mb-8 h-14 w-auto" />
+        <img src="https://bonjouria.fr/wp-content/uploads/2026/03/Bonjour-IA_logo_noir-et-rose.svg" alt="BONJOUR IA" className="mx-auto -mt-4 mb-2 h-32 w-auto" />
         {inv ? (
           <>
             <h1 className="mb-1 text-xl text-brand">Bienvenue !</h1>
