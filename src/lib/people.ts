@@ -1,5 +1,6 @@
 import "server-only";
 import { sql } from "./db";
+import { titleKey } from "./job-families";
 import { FILTER_FIELDS, PERSON_KEYS, type FilterField, type Filters, type Person, type PersonField } from "./fields";
 
 type SearchParams = Record<string, string | string[] | undefined> | URLSearchParams;
@@ -179,53 +180,141 @@ function clean(raw: ImportRow): CleanRow | null {
   return row;
 }
 
+/** Identité d'une personne sans se fier à l'email : prénom + nom + société, normalisés (accents, casse, ponctuation). */
+const identityKey = (r: CleanRow) => [r.first_name, r.last_name, r.company].map((v) => titleKey(v ?? "")).join("|");
+
+/** Fusionne `from` dans `into` : `into` garde ses valeurs, `from` ne comble que les vides. */
+function fillGaps(into: CleanRow, from: CleanRow) {
+  for (const k of PERSON_KEYS) if (into[k] == null) into[k] = from[k];
+}
+
+// Même normalisation que titleKey(), côté SQL
+const norm = (col: string) => `trim(regexp_replace(lower(unaccent(coalesce(${col}, ''))), '[^a-z0-9]+', ' ', 'g'))`;
+const IDENTITY_SQL = sql.unsafe(`${norm("first_name")} || '|' || ${norm("last_name")} || '|' || ${norm("company")}`);
+
 /**
- * Insère ou met à jour (clé = email). En cas de mise à jour, une cellule vide
- * dans le CSV ne vient pas effacer une valeur existante.
+ * Importe sans créer de doublons, dans l'espace de destination (base commune ou espace privé d'un groupe) :
+ *  - même email → mise à jour de la fiche existante ;
+ *  - sans email : même prénom + nom + société → mise à jour de la fiche existante (qui reçoit aussi l'email du CSV si elle n'en avait pas) ;
+ *  - doublons à l'intérieur du fichier → fusionnés en une seule fiche.
+ * En cas de mise à jour, une cellule vide du CSV n'efface jamais une valeur existante.
  */
 export async function upsertPeople(raw: ImportRow[], ownerGroupId: number | null = null) {
-  const byEmail = new Map<string, CleanRow>();
-  const noEmail: CleanRow[] = [];
   let skipped = 0;
+  let duplicates = 0; // lignes du fichier fusionnées avec une autre ligne du même fichier
 
+  // 1. Doublons dans le fichier : par email, puis les lignes sans email rattachées à une fiche de même identité
+  const byEmail = new Map<string, CleanRow>();
+  const noEmail = new Map<string, CleanRow>();
   for (const r of raw) {
     const row = clean(r);
     if (!row) {
       skipped++;
       continue;
     }
-    if (!row.email) {
-      noEmail.push(row);
-      continue;
+    if (row.email) {
+      const prev = byEmail.get(row.email);
+      if (prev) {
+        // La dernière valeur non vide gagne
+        fillGaps(row, prev);
+        duplicates++;
+      }
+      byEmail.set(row.email, row);
+    } else {
+      const key = identityKey(row);
+      const prev = noEmail.get(key);
+      if (prev) {
+        fillGaps(row, prev);
+        duplicates++;
+      }
+      noEmail.set(key, row);
     }
-    // Doublon d'email dans le même fichier : on fusionne (la dernière valeur non vide gagne)
-    const prev = byEmail.get(row.email);
-    if (prev) {
-      for (const k of PERSON_KEYS) if (row[k] == null) row[k] = prev[k];
+  }
+  const emailKeys = new Map<string, CleanRow>();
+  for (const row of byEmail.values()) if (!emailKeys.has(identityKey(row))) emailKeys.set(identityKey(row), row);
+  for (const [key, row] of [...noEmail]) {
+    const owner = emailKeys.get(key);
+    if (owner) {
+      fillGaps(owner, row);
+      noEmail.delete(key);
+      duplicates++;
     }
-    byEmail.set(row.email, row);
   }
 
-  const rows = [...byEmail.values(), ...noEmail];
-  if (rows.length === 0) return { created: 0, updated: 0, skipped };
+  const emailRows = [...byEmail.values()];
+  const plainRows = [...noEmail.values()];
+  if (emailRows.length + plainRows.length === 0) return { created: 0, updated: 0, skipped, duplicates };
 
-  const updates = PERSON_KEYS.filter((k) => k !== "email")
-    .map((k) => `${k} = COALESCE(EXCLUDED.${k}, people.${k})`)
-    .join(", ");
+  // 2. Fiches déjà présentes dans l'espace de destination
+  const space = ownerGroupId === null ? sql`owner_group_id IS NULL` : sql`owner_group_id = ${ownerGroupId}`;
+  const existingEmails = new Set<string>(
+    emailRows.length
+      ? (await sql<{ email: string }[]>`SELECT email FROM people WHERE ${space} AND email IN ${sql(emailRows.map((r) => r.email!))}`).map((r) => r.email)
+      : [],
+  );
+  const keys = [...new Set([...emailRows, ...plainRows].map(identityKey))];
+  const found = await sql<{ id: string; email: string | null; key: string }[]>`
+    SELECT id, email, key FROM (SELECT id, email, ${IDENTITY_SQL} AS key FROM people WHERE ${space}) t
+    WHERE key IN ${sql(keys)}`;
+  const byKey = new Map<string, { id: string; email: string | null }[]>();
+  for (const f of found) byKey.set(f.key, [...(byKey.get(f.key) ?? []), { id: f.id, email: f.email }]);
 
-  // Un même email peut exister dans la base commune et dans l'espace privé d'un groupe : l'unicité se
-  // vérifie dans l'espace de destination (deux index uniques partiels), sans jamais toucher à l'autre.
-  const columns: (PersonField | "owner_group_id")[] = [...PERSON_KEYS, "owner_group_id"];
-  const withOwner = rows.map((r) => ({ ...r, owner_group_id: ownerGroupId }));
-  const conflict =
-    ownerGroupId === null
-      ? sql`ON CONFLICT (email) WHERE owner_group_id IS NULL`
-      : sql`ON CONFLICT (owner_group_id, email) WHERE owner_group_id IS NOT NULL`;
-  const result = await sql<{ inserted: boolean }[]>`
-    INSERT INTO people ${sql(withOwner, columns)}
-    ${conflict} DO UPDATE SET ${sql.unsafe(updates)}, updated_at = now()
-    RETURNING (xmax = 0) AS inserted`;
+  const usedIds = new Set<string>();
+  const matched: (CleanRow & { id: string })[] = []; // à mettre à jour par identifiant
+  const fresh: CleanRow[] = []; // à insérer (ou mettre à jour par email)
+  for (const row of emailRows) {
+    // Email déjà connu : l'insertion avec conflit sur l'email s'en charge
+    const candidate = existingEmails.has(row.email!) ? undefined : byKey.get(identityKey(row))?.find((c) => c.email === null && !usedIds.has(c.id));
+    if (candidate) {
+      usedIds.add(candidate.id);
+      matched.push({ ...row, id: candidate.id });
+    } else {
+      fresh.push(row);
+    }
+  }
+  for (const row of plainRows) {
+    const candidate = byKey.get(identityKey(row))?.find((c) => !usedIds.has(c.id));
+    if (candidate) {
+      usedIds.add(candidate.id);
+      matched.push({ ...row, id: candidate.id });
+    } else {
+      fresh.push(row);
+    }
+  }
 
-  const created = result.filter((r) => r.inserted).length;
-  return { created, updated: result.length - created, skipped };
+  let created = 0;
+  let updated = 0;
+
+  // 3a. Fiches retrouvées par identité : mise à jour par identifiant (les cellules vides n'effacent rien)
+  if (matched.length) {
+    const cols: string[] = ["id", ...PERSON_KEYS, "owner_group_id"];
+    const rows = matched.map((r) => ({ ...r, owner_group_id: ownerGroupId })) as Record<string, string | number | null>[];
+    const set = PERSON_KEYS.map((k) => `${k} = COALESCE(EXCLUDED.${k}, people.${k})`).join(", ");
+    const res = await sql`
+      INSERT INTO people ${sql(rows, cols)}
+      ON CONFLICT (id) DO UPDATE SET ${sql.unsafe(set)}, updated_at = now()`;
+    updated += res.count;
+  }
+
+  // 3b. Nouvelles fiches, ou fiches de même email. Un même email peut exister dans la base commune et dans
+  // l'espace privé d'un groupe : l'unicité se vérifie dans l'espace de destination (index uniques partiels).
+  if (fresh.length) {
+    const updates = PERSON_KEYS.filter((k) => k !== "email")
+      .map((k) => `${k} = COALESCE(EXCLUDED.${k}, people.${k})`)
+      .join(", ");
+    const columns: (PersonField | "owner_group_id")[] = [...PERSON_KEYS, "owner_group_id"];
+    const withOwner = fresh.map((r) => ({ ...r, owner_group_id: ownerGroupId }));
+    const conflict =
+      ownerGroupId === null
+        ? sql`ON CONFLICT (email) WHERE owner_group_id IS NULL`
+        : sql`ON CONFLICT (owner_group_id, email) WHERE owner_group_id IS NOT NULL`;
+    const result = await sql<{ inserted: boolean }[]>`
+      INSERT INTO people ${sql(withOwner, columns)}
+      ${conflict} DO UPDATE SET ${sql.unsafe(updates)}, updated_at = now()
+      RETURNING (xmax = 0) AS inserted`;
+    created += result.filter((r) => r.inserted).length;
+    updated += result.length - result.filter((r) => r.inserted).length;
+  }
+
+  return { created, updated, skipped, duplicates };
 }

@@ -11,7 +11,7 @@ const CHUNK_SIZE_DETECT = 100;
 
 type Parsed = { fileName: string; headers: string[]; rows: Record<string, string>[] };
 type Detected = { registre: number; ia: number; cache: number; introuvable: number };
-type Report = { created: number; updated: number; skipped: number; errors: string[]; detected: Detected | null };
+type Report = { created: number; updated: number; skipped: number; duplicates: number; errors: string[]; detected: Detected | null };
 
 /** Excel (Windows) enregistre souvent en Windows-1252 : on essaie UTF-8 puis on bascule. */
 async function readText(file: File) {
@@ -89,7 +89,7 @@ export default function ImportForm({
     const detect = detectSector && !batch.sector.trim() && mappedFields.has("company");
     const chunkSize = detect ? CHUNK_SIZE_DETECT : CHUNK_SIZE;
     const total: Report = {
-      created: 0, updated: 0, skipped: 0, errors: [],
+      created: 0, updated: 0, skipped: 0, duplicates: 0, errors: [],
       detected: detect ? { registre: 0, ia: 0, cache: 0, introuvable: 0 } : null,
     };
     setReport(null);
@@ -108,6 +108,7 @@ export default function ImportForm({
         total.created += data.created;
         total.updated += data.updated;
         total.skipped += data.skipped;
+        total.duplicates += data.duplicates ?? 0;
         if (total.detected && data.detected) {
           for (const k of Object.keys(total.detected) as (keyof Detected)[]) total.detected[k] += data.detected[k] ?? 0;
         }
@@ -259,6 +260,15 @@ export default function ImportForm({
           <p>
             Import terminé : <strong>{report.created}</strong> créée(s), <strong>{report.updated}</strong> mise(s) à jour,{" "}
             <strong>{report.skipped}</strong> ignorée(s) (ni nom, ni prénom, ni email, ni société).
+          </p>
+          <p>
+            Aucun doublon créé : les personnes déjà présentes (même email, ou même prénom + nom + société) ont été mises à jour
+            {report.duplicates > 0 && (
+              <>
+                {" "}et <strong>{report.duplicates}</strong> ligne(s) en double dans le fichier ont été fusionnées
+              </>
+            )}
+            .
           </p>
           {report.detected && (
             <p>
