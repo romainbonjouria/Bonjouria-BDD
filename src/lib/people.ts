@@ -59,7 +59,7 @@ function spaceCondition(f: Filters, v: Viewer) {
 }
 
 /** Champs dont les valeurs sont regroupées (« Greater Lyon Area » et « Lyon » = « Lyon »). */
-const GROUPED: readonly FilterField[] = ["city", "country", "company", "sector", "job_title", "postal_code"];
+const GROUPED: readonly FilterField[] = ["city", "country", "company", "sector", "postal_code"];
 
 /** Valeurs brutes de la base correspondant aux entrées choisies dans un filtre. */
 async function rawValues(k: FilterField, chosen: string[]) {

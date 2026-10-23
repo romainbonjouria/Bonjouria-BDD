@@ -72,30 +72,12 @@ function cleanCompany(raw: string) {
   return kept.length ? kept.join(" ") : raw.trim();
 }
 
-const JOB_MODIFIERS = new Set(["associe", "associee", "senior", "junior", "confirme", "confirmee"]);
-
-/** Métier principal d'un intitulé libre : « Associé - Expert-comptable (H/F) chez Acme » → « Expert-comptable ». */
-function cleanJob(raw: string) {
-  const text = raw
-    .replace(/\([^)]*\)/g, " ")
-    .replace(/[HF]\s*\/\s*[HF]/gi, " ")
-    .split(/\s+(?:chez|at|@)\s+|\s*[|·•]\s*/i)[0];
-  const segments = text.split(/\s+[-–—/]\s+|\s*,\s*/).map((t) => t.trim()).filter(Boolean);
-  const isModifier = (seg: string) => titleKey(seg).split(" ").every((w) => JOB_MODIFIERS.has(w));
-  let job = segments.find((seg) => !isModifier(seg)) ?? segments[0] ?? raw.trim();
-  const words = job.split(/\s+/);
-  const core = words.filter((w) => !JOB_MODIFIERS.has(titleKey(w)));
-  if (core.length) job = core.join(" ");
-  return job.charAt(0).toUpperCase() + job.slice(1);
-}
-
 /** Valeur affichable normalisée d'une valeur brute pour le filtre donné. */
 export function canonicalValue(field: FilterField, raw: string) {
   const v = raw.trim();
   if (field === "city") return cleanCity(v);
   if (field === "country") return cleanCountry(v);
   if (field === "company") return cleanCompany(v);
-  if (field === "job_title") return cleanJob(v);
   return v;
 }
 
