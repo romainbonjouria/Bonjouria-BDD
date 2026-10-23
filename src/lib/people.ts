@@ -1,6 +1,7 @@
 import "server-only";
 import { sql } from "./db";
 import { titleKey } from "./job-families";
+import { canonicalKey, groupFacet } from "./canonical";
 import { FILTER_FIELDS, PERSON_KEYS, type FilterField, type Filters, type Person, type PersonField } from "./fields";
 
 type SearchParams = Record<string, string | string[] | undefined> | URLSearchParams;
@@ -57,8 +58,20 @@ function spaceCondition(f: Filters, v: Viewer) {
     : sql`owner_group_id = ${v.groupId}`;
 }
 
+/** Champs dont les valeurs sont regroupées (« Greater Lyon Area » et « Lyon » = « Lyon »). */
+const GROUPED: readonly FilterField[] = ["city", "country", "company", "sector", "job_title", "postal_code"];
+
+/** Valeurs brutes de la base correspondant aux entrées choisies dans un filtre. */
+async function rawValues(k: FilterField, chosen: string[]) {
+  if (!GROUPED.includes(k)) return chosen;
+  const keys = new Set(chosen.map((v) => canonicalKey(k, v)));
+  const all = await sql<{ v: string }[]>`SELECT DISTINCT ${sql(k)} AS v FROM people WHERE ${sql(k)} IS NOT NULL AND ${sql(k)} <> ''`;
+  const raw = all.map((r) => r.v).filter((v) => keys.has(canonicalKey(k, v)));
+  return [...new Set([...raw, ...chosen])];
+}
+
 /** Conditions SQL des filtres ; `except` permet d'ignorer un champ (calcul des facettes). */
-function conditions(f: Filters, except: FilterField | undefined, viewer: Viewer) {
+async function conditions(f: Filters, except: FilterField | undefined, viewer: Viewer) {
   const conds = [];
   const space = spaceCondition(f, viewer);
   if (space) conds.push(space);
@@ -70,22 +83,23 @@ function conditions(f: Filters, except: FilterField | undefined, viewer: Viewer)
       : sql`concat_ws(' ', first_name, last_name, email, company, last_name, first_name)`;
     conds.push(sql`unaccent(${text}) ILIKE unaccent(${p})`);
   }
-  // Les filtres viennent de menus déroulants alimentés par la base : correspondance exacte
+  // Les filtres viennent de menus déroulants alimentés par la base : correspondance exacte sur les valeurs regroupées
   for (const k of FILTER_FIELDS) {
     const v = f[k];
     if (!v?.length || k === except) continue;
-    conds.push(sql`${sql(k)} IN ${sql(v)}`);
+    conds.push(sql`${sql(k)} IN ${sql(await rawValues(k, v))}`);
   }
   return conds;
 }
 
-function whereOf(conds: ReturnType<typeof conditions>) {
+function whereOf(conds: Awaited<ReturnType<typeof conditions>>) {
   if (conds.length === 0) return sql``;
   return sql`WHERE ${conds.reduce((acc, c) => sql`${acc} AND ${c}`)}`;
 }
 
-function whereClause(f: Filters, viewer: Viewer) {
-  return whereOf(conditions(f, undefined, viewer));
+// Fragment SQL (thenable) : à ne pas renvoyer depuis une fonction async, il serait exécuté par le await
+async function whereParts(f: Filters, viewer: Viewer) {
+  return await conditions(f, undefined, viewer);
 }
 
 /** Retire les emails des fiches pour un utilisateur sans droit de les voir. */
@@ -103,24 +117,27 @@ const FACET_LIMIT = 2000;
  */
 export async function facetValues(f: Filters, viewer: Viewer): Promise<Facets> {
   const lists = await Promise.all(
-    FILTER_FIELDS.map((k) => {
-      const conds = [...conditions(f, k, viewer), sql`${sql(k)} IS NOT NULL`, sql`${sql(k)} <> ''`];
-      return sql<{ value: string; count: number }[]>`
+    FILTER_FIELDS.map(async (k) => {
+      const conds = [...(await conditions(f, k, viewer)), sql`${sql(k)} IS NOT NULL`, sql`${sql(k)} <> ''`];
+      const rows = await sql<{ value: string; count: number }[]>`
         SELECT ${sql(k)} AS value, count(*)::int AS count FROM people ${whereOf(conds)}
-        GROUP BY 1 ORDER BY 1 LIMIT ${FACET_LIMIT}`;
+        GROUP BY 1 ORDER BY 1`;
+      // Variantes d'une même valeur regroupées en une entrée, puis copie en tableaux simples (sérialisables)
+      const list = GROUPED.includes(k) ? groupFacet(k, rows) : rows.map((r) => ({ value: r.value, count: r.count }));
+      return list.slice(0, FACET_LIMIT);
     }),
   );
-  // Copie en tableaux simples (sérialisables vers les composants client)
-  return Object.fromEntries(FILTER_FIELDS.map((k, i) => [k, lists[i].map((r) => ({ value: r.value, count: r.count }))])) as Facets;
+  return Object.fromEntries(FILTER_FIELDS.map((k, i) => [k, lists[i]])) as Facets;
 }
 
 const ORDER = sql`ORDER BY last_name NULLS LAST, first_name NULLS LAST, id`;
 
 export async function searchPeople(f: Filters, page: number, pageSize: number, viewer: Viewer) {
+  const where = whereOf(await whereParts(f, viewer));
   const [[{ total }], rows] = await Promise.all([
-    sql<{ total: number }[]>`SELECT count(*)::int AS total FROM people ${whereClause(f, viewer)}`,
+    sql<{ total: number }[]>`SELECT count(*)::int AS total FROM people ${where}`,
     sql<Person[]>`
-      SELECT id, ${sql(PERSON_KEYS)} FROM people ${whereClause(f, viewer)} ${ORDER}
+      SELECT id, ${sql(PERSON_KEYS)} FROM people ${where} ${ORDER}
       LIMIT ${pageSize} OFFSET ${(page - 1) * pageSize}`,
   ]);
   return { total, rows: maskEmails(rows, viewer.noEmail) };
@@ -129,8 +146,9 @@ export async function searchPeople(f: Filters, page: number, pageSize: number, v
 export const EXPORT_LIMIT = 100_000;
 
 export async function exportPeople(f: Filters, viewer: Viewer) {
+  const where = whereOf(await whereParts(f, viewer));
   const rows = await sql<Person[]>`
-    SELECT id, ${sql(PERSON_KEYS)} FROM people ${whereClause(f, viewer)} ${ORDER} LIMIT ${EXPORT_LIMIT}`;
+    SELECT id, ${sql(PERSON_KEYS)} FROM people ${where} ${ORDER} LIMIT ${EXPORT_LIMIT}`;
   return maskEmails(rows, viewer.noEmail);
 }
 
@@ -142,7 +160,8 @@ export async function deletePeopleByIds(ids: number[]) {
 
 /** Supprime toutes les fiches correspondant aux filtres (sans filtre : toute la table). Super admin uniquement. */
 export async function deletePeopleMatching(f: Filters) {
-  const res = await sql`DELETE FROM people ${whereClause(f, { noEmail: false, superAdmin: true, groupId: null, sharedAccess: true })}`;
+  const where = whereOf(await whereParts(f, { noEmail: false, superAdmin: true, groupId: null, sharedAccess: true }));
+  const res = await sql`DELETE FROM people ${where}`;
   return res.count;
 }
 
