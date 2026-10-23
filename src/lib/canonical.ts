@@ -1,6 +1,7 @@
 // Valeurs canoniques des filtres : « Greater Lyon Area », « Lyon, France » et « Lyon » donnent la même entrée « Lyon ».
 import { titleKey } from "./job-families";
 import type { FilterField } from "./fields";
+import { SECTORS } from "./sectors";
 
 const CITY_NOISE = new Set([
   "greater", "area", "metropolitan", "metropolis", "metro", "region", "grand", "grande", "agglomeration",
@@ -72,12 +73,69 @@ function cleanCompany(raw: string) {
   return kept.length ? kept.join(" ") : raw.trim();
 }
 
+// Secteurs : les fichiers importés utilisent une arborescence « Famille / Sous-famille » (ex. « Agriculture / Élevage et pêche »).
+// Le filtre les ramène à la liste métier SECTORS ; les sous-familles listées dans SECTOR_SUB passent avant leur famille.
+const SECTOR_PARENT: Record<string, string> = {
+  "agriculture": "Agriculture & Agroalimentaire",
+  "alimentation et boissons": "Agriculture & Agroalimentaire",
+  "batiment et travaux publics": "BTP & Construction",
+  "bricolage jardin et animalerie": "Commerce & Distribution",
+  "cuisine et maison": "Commerce & Distribution",
+  "habillement accessoires textile": "Commerce & Distribution",
+  "hygiene beaute": "Commerce & Distribution",
+  "distribution": "Commerce & Distribution",
+  "culture et loisirs": "Sport, Culture & Loisirs",
+  "sports": "Sport, Culture & Loisirs",
+  "edition": "Marketing, Communication & Médias",
+  "information et media": "Marketing, Communication & Médias",
+  "journaliste": "Marketing, Communication & Médias",
+  "enseignement et formation": "Éducation & Recherche",
+  "entreprises technologiques": "Numérique, IT & Télécoms",
+  "finance et assurance": "Banque, Finance & Assurance",
+  "organisations de la societe civile": "Associations & ESS",
+  "prestation de services et de conseils": "Services aux entreprises",
+  "services publics": "Secteur public & Collectivités",
+  "services sante": "Santé, Pharma & Biotech",
+  "veterinaire": "Santé, Pharma & Biotech",
+  "tourisme et restauration": "Tourisme, Hôtellerie & Restauration",
+  "transport et logistique": "Transport & Logistique",
+};
+const SECTOR_SUB: Record<string, string> = {
+  "industrie/aeronautique": "Aéronautique & Spatial",
+  "industrie/automobile": "Automobile & Mobilité",
+  "industrie/energie": "Énergie & Environnement",
+  "industrie/sante pharma": "Santé, Pharma & Biotech",
+  "enseignement et formation/formation technique et professionnelle": "RH, Recrutement & Formation",
+  "enseignement et formation/formations en ligne": "RH, Recrutement & Formation",
+  "prestation de services et de conseils/cabinets comptables": "Juridique & Comptabilité",
+  "prestation de services et de conseils/cabinets d avocats": "Juridique & Comptabilité",
+  "prestation de services et de conseils/cabinets de recrutement": "RH, Recrutement & Formation",
+  "prestation de services et de conseils/cabinets de conseil": "Conseil & Audit",
+  "prestation de services et de conseils/cabinets d audit et d expertises": "Conseil & Audit",
+  "prestation de services et de conseils/bureaux d etudes": "Ingénierie & R&D",
+};
+const SECTOR_BY_KEY = new Map<string, string>(SECTORS.map((n) => [titleKey(n), n]));
+const OTHER_SECTOR = "Autre";
+
+function cleanSector(raw: string) {
+  const [parent, ...rest] = raw.split("/").map(titleKey);
+  const sub = rest.join(" ");
+  return (
+    SECTOR_SUB[`${parent}/${sub}`] ??
+    SECTOR_BY_KEY.get(titleKey(raw)) ??
+    SECTOR_BY_KEY.get(parent) ??
+    SECTOR_PARENT[parent] ??
+    OTHER_SECTOR
+  );
+}
+
 /** Valeur affichable normalisée d'une valeur brute pour le filtre donné. */
 export function canonicalValue(field: FilterField, raw: string) {
   const v = raw.trim();
   if (field === "city") return cleanCity(v);
   if (field === "country") return cleanCountry(v);
   if (field === "company") return cleanCompany(v);
+  if (field === "sector") return cleanSector(v);
   return v;
 }
 
