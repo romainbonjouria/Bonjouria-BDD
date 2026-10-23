@@ -21,6 +21,14 @@ function cleanCity(raw: string) {
     if (k === "grand" || k === "grande") return !(i === 0 && tokens.length > 1);
     return !CITY_NOISE.has(k);
   });
+  // Pays collé à la ville sans virgule : « LYON FRANCE » → « LYON » (clés de 2 lettres ignorées : « Lyon IT »)
+  for (let n = Math.min(3, kept.length - 1); n >= 1; n--) {
+    const k = titleKey(kept.slice(-n).join(" "));
+    if (k.length > 3 && COUNTRY_BY_KEY.has(k)) {
+      kept.length -= n;
+      break;
+    }
+  }
   const removed = kept.length !== tokens.length;
   if (removed) {
     while (kept.length > 1 && SMALL_WORDS.has(titleKey(kept[0]))) kept.shift();
